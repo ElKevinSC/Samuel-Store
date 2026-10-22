@@ -27,6 +27,7 @@ function Home() {
   const [user, setUser] = useState<User | null>(null)
   const [isAdmin, setIsAdmin] = useState(false)
   const [dbProducts, setDbProducts] = useState<DbProduct[]>([])
+  const [allUsers, setAllUsers] = useState<any[]>([])
   const [authEmail, setAuthEmail] = useState('')
   const [authPassword, setAuthPassword] = useState('')
   const [authName, setAuthName] = useState('')
@@ -47,8 +48,25 @@ function Home() {
   }, [])
   useEffect(() => {
     if (!supabase || !user) { setIsAdmin(false); return }
-    supabase.from('profiles').select('role').eq('id', user.id).maybeSingle().then(({ data }) => setIsAdmin(data?.role === 'admin'))
+    supabase.from('profiles').select('role').eq('id', user.id).maybeSingle().then(({ data }) => {
+      setIsAdmin(data?.role === 'admin')
+      if (data?.role === 'admin') void refreshUsers()
+    })
   }, [user])
+  
+  async function refreshUsers() {
+    if (!supabase) return
+    const { data, error } = await supabase.from('profiles').select('id, full_name, role')
+    if (!error && data) setAllUsers(data)
+  }
+
+  async function updateUserRole(userId: string, newRole: string) {
+    if (!supabase || !isAdmin) return
+    const { error } = await supabase.from('profiles').update({ role: newRole }).eq('id', userId)
+    if (error) setAuthMessage(error.message)
+    else { setAuthMessage('Rol actualizado correctamente.'); await refreshUsers() }
+  }
+
   async function refreshProducts() {
     if (!supabase) return
     const { data, error } = await supabase.from('products').select('id,name,detail,category,price,reseller_price,image_url,active,label,art').eq('active', true).order('created_at', { ascending: false })
@@ -58,6 +76,7 @@ function Home() {
   useEffect(() => { if (supabase) void refreshProducts() }, [])
   const sourceProducts: Product[] = catalogReady ? dbProducts.map(p => ({ id: p.id, name: p.name, detail: p.detail, category: p.category, price: Number(p.price), resellerPrice: Number(p.reseller_price), art: p.art || 'reseller', label: p.label || p.category })) : demoProducts
   const products = sourceProducts.filter(p => (category === 'Todos' || p.category === category) && `${p.name} ${p.detail}`.toLowerCase().includes(search.toLowerCase()))
+  
   async function submitAuth() {
     if (!supabase) { setAuthMessage('Falta configurar VITE_SUPABASE_URL y VITE_SUPABASE_ANON_KEY en Netlify.'); return }
     setAuthMessage('')
@@ -69,18 +88,22 @@ function Home() {
       setAuthMessage(error ? error.message : 'Sesión iniciada correctamente.')
     }
   }
+  
   async function saveProduct() {
     if (!supabase || !isAdmin) { setAuthMessage('Solo una cuenta con rol administrador puede guardar productos.'); return }
     const { error } = await supabase.from('products').insert({ name: adminName, detail: adminDetail, category: adminCategory, price: Number(adminPrice), reseller_price: Number(adminResellerPrice || adminPrice), image_url: adminImage || null, active: true, label: adminCategory, art: 'reseller' })
     if (error) { setAuthMessage(`No se pudo guardar: ${error.message}`); return }
     setAdminName(''); setAdminDetail(''); setAdminPrice(''); setAdminResellerPrice(''); setAdminImage(''); setAuthMessage('Producto guardado.'); await refreshProducts()
   }
+  
   async function deleteProduct(id: string) {
     if (!supabase || !isAdmin) return
     const { error } = await supabase.from('products').delete().eq('id', id)
     setAuthMessage(error ? error.message : 'Producto eliminado.'); if (!error) await refreshProducts()
   }
+  
   function selectCategory(value: Category) { setCategory(value); document.getElementById('catalogo')?.scrollIntoView({ behavior: 'smooth' }) }
+  
   return <div className="storefront">
     <div className="topbar"><span className="status-dot"/> Tu próximo nivel empieza aquí <span className="top-divider">/</span><span>De Guatemala para tu mundo digital</span><span className="country">GT <span className="flag">▌▌▌</span></span></div>
     <header className="header wrap">
@@ -101,7 +124,21 @@ function Home() {
         <div className="product-grid">{products.map(p => <article className="product-card" key={p.id}><div className={`product-art ${p.art}`}><span className="product-tag">{p.label}</span><span className="art-demo">DEMO</span>{p.image_url ? <img src={p.image_url} alt={p.name} className="db-product-image"/> : p.art === 'freefire' ? <div className="game-title">FREE F<span className="fire-i">I</span>RE<small>BATTLEGROUNDS</small></div> : p.art === 'netflix' ? <div className="netflix-logo">N</div> : p.art === 'pubg' ? <div className="pubg-logo">PUBG<small>MOBILE</small></div> : p.art === 'spotify' ? <div className="spotify-logo"><svg viewBox="0 0 100 100" aria-hidden="true"><circle cx="50" cy="50" r="48" fill="currentColor"/><g fill="none" stroke="#09271a" strokeWidth="7" strokeLinecap="round"><path d="M23 37Q50 26 78 41M27 52Q50 43 73 56M31 66Q50 59 68 69"/></g></svg><span>Spotify</span></div> : p.art === 'social' ? <Users size={70}/> : <Layers size={70}/>}</div><div className="product-info"><div className="product-category">{p.category}</div><h3>{p.name}</h3><p>{p.detail}</p><div className="price-row"><div><span className="price-caption">Precio {role === 'client' ? 'cliente' : 'revendedor'}</span><strong>{money(role === 'client' ? p.price : p.resellerPrice)}</strong></div><button aria-label={`Ver ${p.name}`} onClick={() => setProduct(p)}><ArrowUpRight size={21}/></button></div><div className="other-price">{role === 'client' ? 'Revendedor' : 'Cliente'} <span>{money(role === 'client' ? p.resellerPrice : p.price)}</span></div></div></article>)}</div>
         {products.length === 0 && <div className="empty"><Search size={30}/><h3>No encontramos ese producto</h3><p>Prueba con otra búsqueda o explora todas las categorías.</p><button className="button secondary" onClick={() => { setSearch(''); setCategory('Todos') }}>Ver todos los productos</button></div>}
       </section>
-      {isAdmin && <section className="section wrap" id="admin-panel"><div className="section-heading"><div><div className="eyebrow">ACCESO PROTEGIDO</div><h2>Panel de administración</h2></div></div><div className="admin-form"><h3>Agregar producto</h3><label>Nombre<input value={adminName} onChange={e => setAdminName(e.target.value)} /></label><label>Descripción<input value={adminDetail} onChange={e => setAdminDetail(e.target.value)} /></label><label>Categoría<select value={adminCategory} onChange={e => setAdminCategory(e.target.value as Category)}><option>Videojuegos</option><option>Streaming</option><option>Redes sociales</option><option>Reventa</option></select></label><label>Precio cliente (Q)<input type="number" min="0.01" step="0.01" value={adminPrice} onChange={e => setAdminPrice(e.target.value)} /></label><label>Precio revendedor (Q)<input type="number" min="0.01" step="0.01" value={adminResellerPrice} onChange={e => setAdminResellerPrice(e.target.value)} /></label><label>URL de imagen<input value={adminImage} onChange={e => setAdminImage(e.target.value)} placeholder="https://..." /></label><button className="button" onClick={() => void saveProduct()}>Guardar producto</button>{authMessage && <p role="status">{authMessage}</p>}<h3>Productos publicados</h3>{dbProducts.map(p => <div key={p.id} className="admin-product-row"><span>{p.name} — Q {Number(p.price).toFixed(2)}</span><button className="button secondary" onClick={() => void deleteProduct(p.id)}>Eliminar</button></div>)}</div></section>}
+      {isAdmin && <section className="section wrap" id="admin-panel"><div className="section-heading"><div><div className="eyebrow">ACCESO PROTEGIDO</div><h2>Panel de administración</h2></div></div><div className="admin-form"><h3>Agregar producto</h3><label>Nombre<input value={adminName} onChange={e => setAdminName(e.target.value)} /></label><label>Descripción<input value={adminDetail} onChange={e => setAdminDetail(e.target.value)} /></label><label>Categoría<select value={adminCategory} onChange={e => setAdminCategory(e.target.value as Category)}><option>Videojuegos</option><option>Streaming</option><option>Redes sociales</option><option>Reventa</option></select></label><label>Precio cliente (Q)<input type="number" min="0.01" step="0.01" value={adminPrice} onChange={e => setAdminPrice(e.target.value)} /></label><label>Precio revendedor (Q)<input type="number" min="0.01" step="0.01" value={adminResellerPrice} onChange={e => setAdminResellerPrice(e.target.value)} /></label><label>URL de imagen<input value={adminImage} onChange={e => setAdminImage(e.target.value)} placeholder="https://..." /></label><button className="button" onClick={() => void saveProduct()}>Guardar producto</button>{authMessage && <p role="status">{authMessage}</p>}
+        <h3>Gestión de Usuarios</h3>
+        <div style={{ maxHeight: '250px', overflowY: 'auto', marginBottom: '20px', border: '1px solid #263b55', padding: '10px', borderRadius: '8px' }}>
+          {allUsers.length === 0 ? <p style={{fontSize: '12px'}}>Cargando usuarios...</p> : allUsers.map(u => (
+            <div key={u.id} className="admin-product-row" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px 0', borderBottom: '1px solid #263b55' }}>
+              <span style={{ fontSize: '13px' }}>{u.full_name || 'Usuario sin nombre'} — <strong style={{ color: u.role === 'reseller' ? '#00a3ff' : (u.role === 'admin' ? '#22c55e' : '#fff') }}>{u.role}</strong></span>
+              {u.role !== 'admin' && (
+                <button className="button secondary small" style={{ padding: '5px 10px', fontSize: '10px' }} onClick={() => void updateUserRole(u.id, u.role === 'reseller' ? 'customer' : 'reseller')}>
+                  {u.role === 'reseller' ? 'Quitar Revendedor' : 'Hacer Revendedor'}
+                </button>
+              )}
+            </div>
+          ))}
+        </div>
+        <h3>Productos publicados</h3>{dbProducts.map(p => <div key={p.id} className="admin-product-row"><span>{p.name} — Q {Number(p.price).toFixed(2)}</span><button className="button secondary" onClick={() => void deleteProduct(p.id)}>Eliminar</button></div>)}</div></section>}
       <section className="reseller-banner wrap"><div className="banner-symbol"><Users size={43}/></div><div><div className="eyebrow">CRECE CON SAMUEL STORE</div><h2>Tu próximo negocio puede empezar aquí.</h2><p>Explora precios de reventa y encuentra tu siguiente oportunidad digital.</p></div><button className="button secondary" onClick={() => { setRole('reseller'); selectCategory('Todos') }}>Ver precios de reventa <ArrowUpRight size={17}/></button></section>
       <section className="section wrap payment" id="pagos"><div className="payment-intro"><div className="eyebrow">SIMPLE, PASO A PASO</div><h2>Tu pedido.<br/>A tu manera.</h2><p>Una vista previa del proceso de pedidos y pagos manuales en Guatemala.</p><div className="bank"><Landmark size={24}/><div>Cajas Rurales<strong>Banrural</strong></div><span>Pago manual</span></div></div><div className="payment-steps"><div><span className="step">01</span><div><h3>Elige tu producto</h3><p>Explora el catálogo y revisa el precio para cliente o revendedor.</p></div><ShoppingBag size={21}/></div><div><span className="step">02</span><div><h3>Realiza tu depósito</h3><p>Al habilitar las compras, recibirás los datos verificados para depositar en una Caja Rural Banrural.</p></div><Landmark size={21}/></div><div><span className="step">03</span><div><h3>Comparte tu comprobante</h3><p>El equipo revisará el pago antes de completar tu pedido.</p></div><Check size={21}/></div><p className="payment-notice"><ShieldCheck size={16}/> Demostración: los pedidos y depósitos aún no están habilitados. No realices pagos.</p></div></section>
     </main>
@@ -118,4 +155,4 @@ function Home() {
     {!product && modal === null && isAdmin && <div className="admin-form"><h3>Administrar catálogo</h3><label>Nombre<input value={adminName} onChange={e => setAdminName(e.target.value)} /></label><label>Descripción<input value={adminDetail} onChange={e => setAdminDetail(e.target.value)} /></label><label>Categoría<select value={adminCategory} onChange={e => setAdminCategory(e.target.value as Category)}><option>Videojuegos</option><option>Streaming</option><option>Redes sociales</option><option>Reventa</option></select></label><label>Precio cliente (Q)<input type="number" min="0.01" step="0.01" value={adminPrice} onChange={e => setAdminPrice(e.target.value)} /></label><label>Precio revendedor (Q)<input type="number" min="0.01" step="0.01" value={adminResellerPrice} onChange={e => setAdminResellerPrice(e.target.value)} /></label><label>URL de imagen (opcional)<input value={adminImage} onChange={e => setAdminImage(e.target.value)} placeholder="https://..." /></label><button className="button" onClick={() => void saveProduct()}>Guardar producto</button>{authMessage && <p role="status">{authMessage}</p>}<h3>Productos actuales</h3>{dbProducts.map(p => <div key={p.id} className="admin-product-row"><span>{p.name} — Q {Number(p.price).toFixed(2)}</span><button className="button secondary" onClick={() => void deleteProduct(p.id)}>Eliminar</button></div>)}</div>}
     {product ? <><div className="modal-prices"><div>Cliente<strong>{money(product.price)}</strong></div><div>Revendedor<strong>{money(product.resellerPrice)}</strong></div></div><div className="modal-notice"><ShieldCheck size={22}/><p>Vista previa del producto. Las compras y los pagos están deshabilitados. No se crea ningún pedido.</p></div><a className="button" href="#pagos" onClick={() => setProduct(null)}>Conocer el proceso de pago <ArrowRight size={17}/></a></> : <div className="modal-notice">{modal === 'orders' ? <ShoppingBag size={28}/> : <ShieldCheck size={28}/>}<p>{modal === 'orders' ? (user ? 'El historial de pedidos se habilitará en una siguiente fase.' : 'Inicia sesión para consultar tus pedidos cuando el módulo esté habilitado.') : 'Crea tu cuenta o inicia sesión para acceder a tu espacio digital.'}</p></div>}<button className="button secondary" onClick={() => { setModal(null); setProduct(null) }}>Seguir explorando <ArrowRight size={16}/></button></DialogContent></Dialog>
   </div>
-}
+        }
