@@ -1,403 +1,208 @@
 import { createFileRoute } from '@tanstack/react-router'
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { createClient, type User } from '@supabase/supabase-js'
-import { ArrowUpRight, ArrowRight, Gamepad2, Zap, ShieldCheck, Headphones, Play, Users, ShoppingBag, Search, Menu, X, ChevronRight, Landmark, Check, Globe, Sparkles, Layers, ArrowLeft, Upload, Plus } from 'lucide-react'
+import { ArrowRight, ArrowLeft, Gamepad2, Menu, X, Upload, RefreshCw, LogOut } from 'lucide-react'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog'
 import { ControllerArt } from '@/components/store/controller-art'
-import { money, type Category, type Product } from '@/data/catalog'
+import { money, type Category } from '@/data/catalog'
 
 export const Route = createFileRoute('/')({ component: Home })
-const supabaseUrl = import.meta.env.VITE_SUPABASE_URL as string | undefined
-const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY as string | undefined
-const supabase = supabaseUrl && supabaseAnonKey ? createClient(supabaseUrl, supabaseAnonKey) : null
+const url = import.meta.env.VITE_SUPABASE_URL as string | undefined
+const anonKey = import.meta.env.VITE_SUPABASE_ANON_KEY as string | undefined
+const supabase = url && anonKey ? createClient(url, anonKey) : null
 
-type DbProduct = { id: string; name: string; detail: string; game_name?: string | null; category: Category; price: number; reseller_price: number; active: boolean; }
+type Product = { id: string; name: string; detail: string; game_name: string | null; category: Category; price: number; reseller_price: number; active: boolean }
+type Bank = { id: string; bank_name: string; account_number: string; account_holder: string; active: boolean }
+type Profile = { id: string; full_name: string; role: string; application_status: string }
+type Order = { id: string; user_id: string; product_id: string | null; player_id: string; amount: number; reference_nc: string; deposit_date: string | null; receipt_path: string | null; status: string; created_at: string; products?: { detail?: string; game_name?: string } | null; profiles?: { full_name?: string } | null; receipt_signed_url?: string | null }
 
 function Home() {
   const [selectedGame, setSelectedGame] = useState<string | null>(null)
   const [menu, setMenu] = useState(false)
   const [modal, setModal] = useState<'login' | 'register' | 'reseller_apply' | 'checkout' | 'my_orders' | null>(null)
-  
   const [user, setUser] = useState<User | null>(null)
   const [isAdmin, setIsAdmin] = useState(false)
-  const [isReseller, setIsReseller] = useState(false) 
-
-  // Datos
-  const [dbProducts, setDbProducts] = useState<DbProduct[]>([])
-  const [banks, setBanks] = useState<any[]>([])
-  const [allUsers, setAllUsers] = useState<any[]>([])
-  const [allOrders, setAllOrders] = useState<any[]>([])
-  const [myOrders, setMyOrders] = useState<any[]>([])
-  
-  // Formularios
-  const [authEmail, setAuthEmail] = useState('')
-  const [authPassword, setAuthPassword] = useState('')
-  const [authName, setAuthName] = useState('')
-  const [authMessage, setAuthMessage] = useState('')
-
-  const [resName, setResName] = useState('')
+  const [isReseller, setIsReseller] = useState(false)
+  const [loading, setLoading] = useState(false)
+  const [message, setMessage] = useState('')
+  const [products, setProducts] = useState<Product[]>([])
+  const [banks, setBanks] = useState<Bank[]>([])
+  const [profiles, setProfiles] = useState<Profile[]>([])
+  const [orders, setOrders] = useState<Order[]>([])
+  const [myOrders, setMyOrders] = useState<Order[]>([])
+  const [email, setEmail] = useState('')
+  const [password, setPassword] = useState('')
+  const [fullName, setFullName] = useState('')
   const [resAge, setResAge] = useState('')
-  const [resExpected, setResExpected] = useState('')
-
-  const [checkoutProduct, setCheckoutProduct] = useState<any>(null)
+  const [expectedSales, setExpectedSales] = useState('')
+  const [product, setProduct] = useState<Product | null>(null)
   const [playerId, setPlayerId] = useState('')
-  const [ncRef, setNcRef] = useState('')
+  const [reference, setReference] = useState('')
   const [depositAmount, setDepositAmount] = useState('')
   const [depositDate, setDepositDate] = useState('')
-  const [receiptFile, setReceiptFile] = useState<File | null>(null)
-
-  const [adminCategory, setAdminCategory] = useState('Videojuegos')
-  const [adminGameName, setAdminGameName] = useState('')
-  const [adminName, setAdminName] = useState('')
-  const [adminPrice, setAdminPrice] = useState('')
-  const [adminResellerPrice, setAdminResellerPrice] = useState('')
+  const [receipt, setReceipt] = useState<File | null>(null)
+  const [gameName, setGameName] = useState('')
+  const [packageName, setPackageName] = useState('')
+  const [price, setPrice] = useState('')
+  const [resellerPrice, setResellerPrice] = useState('')
   const [bankName, setBankName] = useState('')
   const [bankAccount, setBankAccount] = useState('')
   const [bankHolder, setBankHolder] = useState('')
 
+  async function refreshProducts() {
+    if (!supabase) return
+    const { data, error } = await supabase.from('products').select('id,name,detail,game_name,category,price,reseller_price,active').eq('active', true).order('created_at', { ascending: false })
+    if (error) setMessage(`No se pudo cargar el catálogo: ${error.message}`)
+    if (data) setProducts(data as Product[])
+  }
+  async function fetchMyOrders(uid: string) {
+    if (!supabase) return
+    const { data, error } = await supabase.from('orders').select('*, products(detail,game_name)').eq('user_id', uid).order('created_at', { ascending: false })
+    if (!error && data) setMyOrders(data as Order[])
+  }
+  async function refreshAdmin() {
+    if (!supabase) return
+    const [p, b, o] = await Promise.all([
+      supabase.from('profiles').select('id,full_name,role,application_status'),
+      supabase.from('bank_accounts').select('id,bank_name,account_number,account_holder,active').eq('active', true),
+      supabase.from('orders').select('*, products(detail,game_name), profiles(full_name)').order('created_at', { ascending: false })
+    ])
+    if (p.data) setProfiles(p.data as Profile[])
+    if (b.data) setBanks(b.data as Bank[])
+    if (o.data) {
+      const list = await Promise.all((o.data as Order[]).map(async item => {
+        if (!item.receipt_path || !supabase) return item
+        const { data } = await supabase.storage.from('boletas').createSignedUrl(item.receipt_path, 600)
+        return { ...item, receipt_signed_url: data?.signedUrl ?? null }
+      }))
+      setOrders(list)
+    }
+    if (p.error || b.error || o.error) setMessage('No se pudieron actualizar algunos datos. Revisa las políticas y columnas de Supabase.')
+  }
+  async function loadUserRole(current: User) {
+    if (!supabase) return
+    const { data } = await supabase.from('profiles').select('role').eq('id', current.id).maybeSingle()
+    const role = data?.role ?? 'customer'
+    setIsAdmin(role === 'admin'); setIsReseller(role === 'reseller' || role === 'admin')
+    if (role === 'admin') await refreshAdmin()
+    await fetchMyOrders(current.id)
+  }
   useEffect(() => {
     if (!supabase) return
     let alive = true
-    const fetchUserRole = async (currentUser: User) => {
-      const { data } = await supabase.from('profiles').select('*').eq('id', currentUser.id).single()
+    void refreshProducts()
+    supabase.auth.getSession().then(async ({ data }) => {
       if (!alive) return
-      if (data) {
-        setIsAdmin(data.role === 'admin')
-        setIsReseller(data.role === 'reseller' || data.role === 'admin')
-        if (data.role === 'admin') void refreshAdminData();
-        void fetchMyOrders(currentUser.id);
-      }
-    }
-    supabase.auth.getSession().then(({ data }) => {
-      const sessionUser = data.session?.user ?? null
-      setUser(sessionUser)
-      if (sessionUser) fetchUserRole(sessionUser)
+      const current = data.session?.user ?? null
+      setUser(current)
+      if (current) await loadUserRole(current)
     })
-    const { data: listener } = supabase.auth.onAuthStateChange((_event, session) => {
-      const sessionUser = session?.user ?? null
-      setUser(sessionUser)
-      if (sessionUser) fetchUserRole(sessionUser)
-      else { setIsAdmin(false); setIsReseller(false); setMyOrders([]); }
+    const { data: authListener } = supabase.auth.onAuthStateChange((_event, session) => {
+      const current = session?.user ?? null
+      setUser(current)
+      if (current) window.setTimeout(() => { void loadUserRole(current) }, 0)
+      else { setIsAdmin(false); setIsReseller(false); setMyOrders([]); setOrders([]); setProfiles([]) }
     })
-    return () => { alive = false; listener.subscription.unsubscribe() }
+    return () => { alive = false; authListener.subscription.unsubscribe() }
   }, [])
 
-  async function refreshAdminData() {
-    if (!supabase) return
-    const { data: users } = await supabase.from('profiles').select('id, full_name, role, application_status')
-    if (users) setAllUsers(users)
-    const { data: banksData } = await supabase.from('bank_accounts').select('*').eq('active', true)
-    if (banksData) setBanks(banksData)
-    const { data: ordersData } = await supabase.from('orders').select('*, products(detail, game_name), profiles(full_name)').order('created_at', { ascending: false })
-    if (ordersData) setAllOrders(ordersData)
-    void refreshProducts()
-  }
-
-  async function fetchMyOrders(userId: string) {
-    if (!supabase) return
-    const { data } = await supabase.from('orders').select('*, products(detail, game_name)').eq('user_id', userId).order('created_at', { ascending: false })
-    if (data) setMyOrders(data)
-  }
-
-  async function refreshProducts() {
-    if (!supabase) return
-    const { data } = await supabase.from('products').select('*').eq('active', true)
-    if (data) setDbProducts(data as DbProduct[])
-  }
-  useEffect(() => { if (supabase) { void refreshProducts(); } }, [])
-
-  // --- ACCIONES ---
   async function submitAuth() {
-    if (!supabase) return
-    setAuthMessage('')
+    if (!supabase) { setMessage('Faltan las variables de Supabase en Netlify.'); return }
+    setLoading(true); setMessage('')
     if (modal === 'register') {
-      const { error } = await supabase.auth.signUp({ email: authEmail, password: authPassword, options: { data: { full_name: authName } } })
-      setAuthMessage(error ? error.message : 'Revisa tu correo para confirmar.')
+      const { error } = await supabase.auth.signUp({ email: email.trim(), password, options: { data: { full_name: fullName.trim() } } })
+      setMessage(error ? error.message : 'Cuenta creada. Revisa tu correo para confirmar si se solicita.')
     } else {
-      const { error } = await supabase.auth.signInWithPassword({ email: authEmail, password: authPassword })
-      if (error) setAuthMessage(error.message); else setModal(null);
+      const { error } = await supabase.auth.signInWithPassword({ email: email.trim(), password })
+      if (error) setMessage(error.message); else { setModal(null); setPassword('') }
     }
+    setLoading(false)
   }
-
   async function applyReseller() {
-    if (!supabase || !user) return
-    const { error } = await supabase.from('profiles').update({
-      full_name: resName, age: Number(resAge), expected_sales: Number(resExpected), application_status: 'pending'
-    }).eq('id', user.id)
-    if (error) alert("Error al enviar solicitud: " + error.message)
-    else { alert('Solicitud enviada. El admin la revisará pronto.'); setModal(null); }
+    if (!supabase || !user) { setMessage('Inicia sesión para enviar la solicitud.'); return }
+    if (!fullName.trim() || Number(resAge) < 18 || Number(expectedSales) < 200) { setMessage('Completa el nombre, edad mínima de 18 años y ventas estimadas de Q200 o más.'); return }
+    setLoading(true)
+    const { error } = await supabase.from('profiles').update({ full_name: fullName.trim(), age: Number(resAge), expected_sales: Number(expectedSales), application_status: 'pending' }).eq('id', user.id)
+    setLoading(false)
+    if (error) setMessage(`Error al enviar solicitud: ${error.message}`)
+    else { setModal(null); setMessage('Solicitud enviada. El administrador la revisará.'); await loadUserRole(user) }
   }
-
   async function submitOrder() {
-    if (!supabase || !user || !checkoutProduct || !receiptFile) { alert('Faltan datos o comprobante'); return }
-    setAuthMessage('Subiendo comprobante...')
-    
-    const fileExt = receiptFile.name.split('.').pop()
-    const fileName = `${user.id}-${Date.now()}.${fileExt}`
-    const { error: uploadError } = await supabase.storage.from('boletas').upload(fileName, receiptFile)
-    
-    if (uploadError) { alert('Error al subir foto: ' + uploadError.message); setAuthMessage(''); return }
-    const { data: urlData } = supabase.storage.from('boletas').getPublicUrl(fileName)
-
-    const { error } = await supabase.from('orders').insert({
-      user_id: user.id, product_id: checkoutProduct.id, player_id: playerId, amount: Number(depositAmount), reference_nc: ncRef, date: new Date(depositDate), receipt_url: urlData.publicUrl, status: 'pending'
-    })
-
-    if (error) { alert('Error al crear pedido: ' + error.message); setAuthMessage('') }
-    else { alert('¡Pedido enviado!'); setModal(null); fetchMyOrders(user.id); }
+    if (!supabase || !user || !product) { setMessage('Inicia sesión y selecciona un producto.'); return }
+    if (!playerId.trim() || !reference.trim() || !depositDate || !receipt || Number(depositAmount) <= 0) { setMessage('Completa todos los campos y adjunta el comprobante.'); return }
+    if (receipt.size > 5 * 1024 * 1024) { setMessage('El comprobante debe pesar máximo 5 MB.'); return }
+    if (!['image/jpeg','image/png','image/webp','application/pdf'].includes(receipt.type)) { setMessage('Usa JPG, PNG, WEBP o PDF.'); return }
+    setLoading(true); setMessage('Subiendo comprobante...')
+    const ext = receipt.name.split('.').pop()?.toLowerCase() || 'jpg'
+    const path = `${user.id}/${crypto.randomUUID()}.${ext}`
+    const { error: uploadError } = await supabase.storage.from('boletas').upload(path, receipt, { contentType: receipt.type, upsert: false })
+    if (uploadError) { setLoading(false); setMessage(`Error al subir boleta: ${uploadError.message}`); return }
+    const { error } = await supabase.from('orders').insert({ user_id: user.id, product_id: product.id, player_id: playerId.trim(), amount: Number(depositAmount), reference_nc: reference.trim(), deposit_date: depositDate, receipt_path: path, status: 'pending' })
+    if (error) {
+      await supabase.storage.from('boletas').remove([path]); setLoading(false)
+      setMessage(`Error al guardar pedido: ${error.message}. Verifica que orders tenga product_id y su relación con products.`); return
+    }
+    setLoading(false); setModal(null); setMessage('Pedido enviado correctamente.'); await fetchMyOrders(user.id)
+    setPlayerId(''); setReference(''); setDepositAmount(''); setDepositDate(''); setReceipt(null)
   }
-
-  async function updateOrderStatus(orderId: string, status: string) {
+  async function updateOrder(id: string, status: 'completed' | 'rejected') {
     if (!supabase || !isAdmin) return
-    await supabase.from('orders').update({ status }).eq('id', orderId)
-    void refreshAdminData()
+    const { error } = await supabase.from('orders').update({ status }).eq('id', id)
+    if (error) setMessage(`No se pudo actualizar el pedido: ${error.message}`)
+    else await refreshAdmin()
   }
-
-  async function approveReseller(userId: string, status: string) {
+  async function approveReseller(id: string, status: 'approved' | 'rejected') {
     if (!supabase || !isAdmin) return
-    await supabase.from('profiles').update({ role: status === 'approved' ? 'reseller' : 'customer', application_status: status }).eq('id', userId)
-    void refreshAdminData()
-    alert(`Solicitud ${status === 'approved' ? 'Aprobada' : 'Rechazada'}`)
+    const { error } = await supabase.from('profiles').update({ role: status === 'approved' ? 'reseller' : 'customer', application_status: status }).eq('id', id)
+    if (error) setMessage(`No se pudo actualizar la solicitud: ${error.message}`); else await refreshAdmin()
   }
-
   async function saveProduct() {
     if (!supabase || !isAdmin) return
-    if (!adminGameName || !adminName || !adminPrice) { alert("Llena los campos obligatorios"); return; }
-    
-    const { error } = await supabase.from('products').insert({ 
-      name: adminName, 
-      detail: adminName, // Usamos el mismo nombre para mostrar
-      game_name: adminGameName, 
-      category: adminCategory, 
-      price: Number(adminPrice), 
-      reseller_price: Number(adminResellerPrice || adminPrice), 
-      active: true 
-    })
-    
-    if (error) alert("Error al guardar: " + error.message)
-    else {
-      alert("¡Producto guardado!")
-      void refreshProducts(); 
-      setAdminGameName(''); setAdminName(''); setAdminPrice(''); setAdminResellerPrice('');
-    }
+    if (!gameName.trim() || !packageName.trim() || Number(price) <= 0) { setMessage('Escribe juego, paquete y precio válido.'); return }
+    setLoading(true)
+    const { error } = await supabase.from('products').insert({ name: packageName.trim(), detail: packageName.trim(), game_name: gameName.trim(), category: 'Videojuegos', price: Number(price), reseller_price: Number(resellerPrice || price), active: true })
+    setLoading(false)
+    if (error) setMessage(`Error al guardar producto: ${error.message}`)
+    else { setMessage('Producto guardado.'); setGameName(''); setPackageName(''); setPrice(''); setResellerPrice(''); await refreshProducts() }
   }
-
   async function saveBank() {
     if (!supabase || !isAdmin) return
-    if (!bankName || !bankAccount) { alert("Llena los datos del banco"); return; }
-    const { error } = await supabase.from('bank_accounts').insert({ bank_name: bankName, account_number: bankAccount, account_holder: bankHolder })
-    if (error) alert("Error: " + error.message)
-    else {
-      alert("Cuenta guardada")
-      void refreshAdminData(); setBankName(''); setBankAccount(''); setBankHolder('');
-    }
+    if (!bankName.trim() || !bankAccount.trim()) { setMessage('Completa banco y número de cuenta.'); return }
+    const { error } = await supabase.from('bank_accounts').insert({ bank_name: bankName.trim(), account_number: bankAccount.trim(), account_holder: bankHolder.trim(), active: true })
+    if (error) setMessage(`Error al guardar cuenta: ${error.message}`)
+    else { setBankName(''); setBankAccount(''); setBankHolder(''); setMessage('Cuenta bancaria guardada.'); await refreshAdmin() }
   }
+  const games = useMemo(() => Array.from(new Set(products.map(p => p.game_name || 'Otros'))), [products])
+  const gameProducts = useMemo(() => products.filter(p => (p.game_name || 'Otros') === selectedGame), [products, selectedGame])
+  const pendingResellers = profiles.filter(p => p.application_status === 'pending')
+  const pendingOrders = orders.filter(o => o.status === 'pending')
 
-  // Lógica de categorías y juegos
-  const availableGames = Array.from(new Set(dbProducts.map(p => p.game_name || 'Otros')))
-  const filteredProducts = dbProducts.filter(p => selectedGame === (p.game_name || 'Otros'))
-
+  if (!supabase) return <div className="storefront wrap" style={{ padding: 32 }}><h1>Samuel Store</h1><p>Configura VITE_SUPABASE_URL y VITE_SUPABASE_ANON_KEY en las variables de entorno de Netlify y vuelve a publicar.</p></div>
   return <div className="storefront">
     <header className="header wrap">
-      <a className="brand" href="#inicio"><img className="brand-logo" src="/images/samuel-store-logo.jpg" alt="Samuel Store"/></a>
-      <nav className={menu ? 'navigation open' : 'navigation'}>
-        <a className="active" href="#inicio" onClick={() => setMenu(false)}>Inicio</a>
-        <a href="#catalogo" onClick={() => setMenu(false)}>Catálogo</a>
-        <button onClick={() => { user ? setModal('my_orders') : setModal('login'); setMenu(false) }}>Mis pedidos</button>
-      </nav>
-      <div className="account">
-        {user ? <>
-          <span className="login">{user.email}</span>
-          {isAdmin && <button className="button small" style={{ backgroundColor: '#00a3ff' }} onClick={() => document.getElementById('admin-panel')?.scrollIntoView({ behavior: 'smooth' })}>Administrar</button>}
-          <button className="button small" onClick={() => supabase?.auth.signOut()}>Salir</button>
-        </> : <>
-          <button className="login" onClick={() => { setAuthMessage(''); setModal('login') }}>Iniciar sesión</button>
-          <button className="button small" onClick={() => { setAuthMessage(''); setModal('register') }}>Registrarse</button>
-        </>}
-        <button className="mobile-menu" onClick={() => setMenu(!menu)}>{menu ? <X/> : <Menu/>}</button>
-      </div>
+      <a className="brand" href="#inicio"><img className="brand-logo" src="/images/samuel-store-logo.jpg" alt="Samuel Store" /></a>
+      <nav className={menu ? 'navigation open' : 'navigation'}><a className="active" href="#inicio" onClick={() => setMenu(false)}>Inicio</a><a href="#catalogo" onClick={() => setMenu(false)}>Catálogo</a><button onClick={() => { setModal(user ? 'my_orders' : 'login'); setMenu(false) }}>Mis pedidos</button></nav>
+      <div className="account">{user ? <><span className="login">{user.email}</span>{isAdmin && <button className="button small" onClick={() => document.getElementById('admin-panel')?.scrollIntoView({ behavior: 'smooth' })}>Administrar</button>}<button className="button small" onClick={() => { void supabase.auth.signOut() }}><LogOut size={14}/> Salir</button></> : <><button className="login" onClick={() => { setMessage(''); setModal('login') }}>Iniciar sesión</button><button className="button small" onClick={() => { setMessage(''); setModal('register') }}>Registrarse</button></>}<button className="mobile-menu" aria-label="Abrir menú" onClick={() => setMenu(!menu)}>{menu ? <X/> : <Menu/>}</button></div>
     </header>
-
     <main>
-      <section className="hero wrap" id="inicio">
-        <div className="hero-copy">
-          <h1>Tu juego.<br/>Tu mundo.<br/><span>Tu siguiente nivel.</span></h1>
-          <p className="slogan">En Samuel Store, tu meta es nuestra meta.</p>
-          <div className="hero-actions"><a className="button" href="#catalogo">Explorar catálogo <ArrowRight size={18}/></a></div>
-        </div>
-        <div className="hero-art"><ControllerArt/></div>
+      <section className="hero wrap" id="inicio"><div className="hero-copy"><h1>Tu juego.<br/>Tu mundo.<br/><span>Tu siguiente nivel.</span></h1><p className="slogan">En Samuel Store, tu meta es nuestra meta.</p><div className="hero-actions"><a className="button" href="#catalogo">Explorar catálogo <ArrowRight size={18}/></a></div></div><div className="hero-art"><ControllerArt/></div></section>
+      <section className="section catalog wrap" id="catalogo"><div className="section-heading"><div><h2>Videojuegos<span className="blue-text">.</span></h2>{!isReseller && user && <p style={{ fontSize: 12, color: '#f06675' }}><button onClick={() => { setMessage(''); setModal('reseller_apply') }} style={{ textDecoration: 'underline' }}>Solicita ser revendedor aquí</button></p>}</div>{selectedGame && <button className="button secondary small" onClick={() => setSelectedGame(null)}><ArrowLeft size={16}/> Volver a juegos</button>}<button className="button secondary small" onClick={() => { void refreshProducts() }}><RefreshCw size={15}/></button></div>
+        {!selectedGame && <div className="category-grid">{games.length === 0 ? <p style={{ color: 'gray' }}>Todavía no hay juegos disponibles.</p> : games.map(game => <button key={game} className="category-card" onClick={() => setSelectedGame(game)}><span className="category-icon"><Gamepad2 size={27}/></span><h3>{game}</h3><p>Ver paquetes de recarga</p></button>)}</div>}
+        {selectedGame && <div className="product-grid">{gameProducts.length === 0 ? <p>No hay paquetes para este juego.</p> : gameProducts.map(p => { const displayPrice = Number(isReseller ? p.reseller_price : p.price); return <article className="product-card" key={p.id}><div className="product-info"><h3>{p.detail || p.name}</h3><div className="price-row"><div><span className="price-caption">Precio</span><strong>{money(displayPrice)}</strong></div><button className="button" onClick={() => { if (!user) { setModal('login'); return } setProduct(p); setDepositAmount(String(displayPrice)); setMessage(''); setModal('checkout') }}>Comprar</button></div></div></article> })}</div>}
       </section>
-
-      <section className="section catalog wrap" id="catalogo">
-        <div className="section-heading">
-          <div>
-            <h2>Videojuegos<span className="blue-text">.</span></h2>
-            {!isReseller && user && <p style={{fontSize: '12px', color: '#f06675'}}>¿Quieres ganar más? <span style={{textDecoration: 'underline', cursor: 'pointer'}} onClick={() => setModal('reseller_apply')}>Solicita ser revendedor aquí</span></p>}
-          </div>
-          {selectedGame && <button className="button secondary small" onClick={() => setSelectedGame(null)}><ArrowLeft size={16}/> Volver a Juegos</button>}
-        </div>
-        
-        {!selectedGame && (
-          <div className="category-grid">
-            {availableGames.length === 0 ? <p style={{ color: 'gray' }}>No hay juegos creados. Crea uno en el panel de abajo.</p> : availableGames.map(game => (
-              <button key={game} className="category-card" onClick={() => setSelectedGame(game)}>
-                <span className="category-icon"><Gamepad2 size={27}/></span><h3>{game}</h3><p>Ver paquetes de recarga</p>
-              </button>
-            ))}
-          </div>
-        )}
-
-        {selectedGame && (
-          <div className="product-grid">
-            {filteredProducts.length === 0 ? <p style={{ color: 'gray' }}>No hay paquetes para este juego.</p> : filteredProducts.map(p => {
-              const displayPrice = isReseller ? p.reseller_price : p.price;
-              return (
-                <article className="product-card" key={p.id}>
-                  <div className="product-info">
-                    <h3>{p.detail}</h3>
-                    <div className="price-row">
-                      <div><span className="price-caption">Precio</span><strong>{money(displayPrice)}</strong></div>
-                      <button className="button" onClick={() => { if(!user) { setModal('login'); return; } setCheckoutProduct({...p, price: displayPrice}); setModal('checkout') }}>Comprar</button>
-                    </div>
-                  </div>
-                </article>
-              )
-            })}
-          </div>
-        )}
-      </section>
-
-      {isAdmin && (
-        <section className="section wrap" id="admin-panel" style={{ borderTop: '2px solid #00a3ff', marginTop: '50px', paddingBottom: '50px' }}>
-          <h2>Panel de Administración</h2>
-          
-          <div className="admin-form" style={{ marginTop: '20px' }}>
-            <h3>Solicitudes de Revendedor Pendientes</h3>
-            {allUsers.filter(u => u.application_status === 'pending').map(u => (
-              <div key={u.id} className="admin-product-row" style={{ backgroundColor: '#222', padding: '10px', margin: '5px 0' }}>
-                <span><strong>{u.full_name}</strong> quiere ser revendedor.</span>
-                <div>
-                  <button className="button small" style={{backgroundColor: 'green'}} onClick={() => approveReseller(u.id, 'approved')}>Aprobar</button>
-                  <button className="button small" style={{backgroundColor: 'red', marginLeft: '5px'}} onClick={() => approveReseller(u.id, 'rejected')}>Rechazar</button>
-                </div>
-              </div>
-            ))}
-            {allUsers.filter(u => u.application_status === 'pending').length === 0 && <p>No hay solicitudes pendientes.</p>}
-          </div>
-
-          <div className="admin-form" style={{ marginTop: '20px' }}>
-            <h3>Pedidos Pendientes de Aprobar</h3>
-            <div style={{ maxHeight: '400px', overflowY: 'auto' }}>
-              {allOrders.filter(o => o.status === 'pending').map(o => (
-                <div key={o.id} className="admin-product-row" style={{ backgroundColor: '#222', padding: '10px', margin: '5px 0', flexDirection: 'column', alignItems: 'flex-start' }}>
-                  <p><strong>Cliente:</strong> {o.profiles?.full_name} | <strong>Juego:</strong> {o.products?.game_name} - {o.products?.detail}</p>
-                  <p><strong>ID Jugador:</strong> {o.player_id} | <strong>Monto:</strong> Q{o.amount} | <strong>NC:</strong> {o.reference_nc}</p>
-                  <a href={o.receipt_url} target="_blank" rel="noreferrer" style={{color: '#00a3ff', textDecoration: 'underline'}}>Ver Boleta</a>
-                  <div style={{ marginTop: '10px' }}>
-                    <button className="button small" style={{backgroundColor: 'green'}} onClick={() => updateOrderStatus(o.id, 'completed')}>Aprobar Pago</button>
-                    <button className="button small" style={{backgroundColor: 'red', marginLeft: '5px'}} onClick={() => updateOrderStatus(o.id, 'rejected')}>Rechazar</button>
-                  </div>
-                </div>
-              ))}
-              {allOrders.filter(o => o.status === 'pending').length === 0 && <p>No hay pedidos pendientes.</p>}
-            </div>
-          </div>
-
-          <div className="admin-form" style={{ marginTop: '20px' }}>
-            <h3>Crear Juego / Paquete</h3>
-            <label>Categoría Principal<select value={adminCategory} onChange={e => setAdminCategory(e.target.value)}>
-              <option>Videojuegos</option>
-            </select></label>
-            <input placeholder="Nombre del Juego (Ej. Free Fire)" value={adminGameName} onChange={e => setAdminGameName(e.target.value)} />
-            <input placeholder="Nombre del Paquete (Ej. 1000 Diamantes)" value={adminName} onChange={e => setAdminName(e.target.value)} />
-            <input type="number" placeholder="Precio Cliente (Q)" value={adminPrice} onChange={e => setAdminPrice(e.target.value)} />
-            <input type="number" placeholder="Precio Revendedor (Q)" value={adminResellerPrice} onChange={e => setAdminResellerPrice(e.target.value)} />
-            <button className="button" onClick={saveProduct}>Guardar Producto</button>
-          </div>
-
-          <div className="admin-form" style={{ marginTop: '20px' }}>
-            <h3>Mis Cuentas Bancarias</h3>
-            <input placeholder="Banco (Ej. Banrural)" value={bankName} onChange={e => setBankName(e.target.value)} />
-            <input placeholder="Número de Cuenta" value={bankAccount} onChange={e => setBankAccount(e.target.value)} />
-            <input placeholder="Titular" value={bankHolder} onChange={e => setBankHolder(e.target.value)} />
-            <button className="button" onClick={saveBank}>Guardar Cuenta</button>
-            <ul>{banks.map(b => <li key={b.id}>{b.bank_name} - {b.account_number} ({b.account_holder})</li>)}</ul>
-          </div>
-        </section>
-      )}
+      {isAdmin && <section className="section wrap" id="admin-panel" style={{ borderTop: '2px solid #00a3ff', marginTop: 50, paddingBottom: 50 }}><h2>Panel de administración</h2>
+        <div className="admin-form" style={{ marginTop: 20 }}><h3>Solicitudes de revendedor pendientes</h3>{pendingResellers.map(p => <div key={p.id} className="admin-product-row" style={{ backgroundColor: '#222', padding: 10, margin: '5px 0' }}><span><strong>{p.full_name || 'Usuario'}</strong> quiere ser revendedor.</span><div><button className="button small" onClick={() => { void approveReseller(p.id, 'approved') }}>Aprobar</button><button className="button small" style={{ marginLeft: 5 }} onClick={() => { void approveReseller(p.id, 'rejected') }}>Rechazar</button></div></div>)}{pendingResellers.length === 0 && <p>No hay solicitudes pendientes.</p>}</div>
+        <div className="admin-form" style={{ marginTop: 20 }}><h3>Pedidos pendientes</h3><div style={{ maxHeight: 400, overflowY: 'auto' }}>{pendingOrders.map(o => <div key={o.id} className="admin-product-row" style={{ backgroundColor: '#222', padding: 10, margin: '5px 0', flexDirection: 'column', alignItems: 'flex-start' }}><p><strong>Cliente:</strong> {o.profiles?.full_name || o.user_id} | <strong>Juego:</strong> {o.products?.game_name || '—'} - {o.products?.detail || '—'}</p><p><strong>ID jugador:</strong> {o.player_id} | <strong>Monto:</strong> Q{o.amount} | <strong>NC:</strong> {o.reference_nc}</p><p><strong>Fecha depósito:</strong> {o.deposit_date || '—'}</p>{o.receipt_signed_url ? <a href={o.receipt_signed_url} target="_blank" rel="noreferrer" style={{ color: '#00a3ff', textDecoration: 'underline' }}>Ver comprobante</a> : <p>No se pudo crear enlace para la boleta.</p>}<div style={{ marginTop: 10 }}><button className="button small" onClick={() => { void updateOrder(o.id, 'completed') }}>Aprobar y completar</button><button className="button small" style={{ marginLeft: 5 }} onClick={() => { void updateOrder(o.id, 'rejected') }}>Rechazar</button></div></div>)}{pendingOrders.length === 0 && <p>No hay pedidos pendientes.</p>}</div><button className="button secondary small" onClick={() => { void refreshAdmin() }}><RefreshCw size={14}/> Actualizar</button></div>
+        <div className="admin-form" style={{ marginTop: 20 }}><h3>Crear juego / paquete</h3><label>Categoría principal<select value="Videojuegos" disabled><option>Videojuegos</option></select></label><input placeholder="Nombre del juego (Ej. Free Fire)" value={gameName} onChange={e => setGameName(e.target.value)}/><input placeholder="Nombre del paquete (Ej. 1000 Diamantes)" value={packageName} onChange={e => setPackageName(e.target.value)}/><input type="number" min="0.01" step="0.01" placeholder="Precio cliente (Q)" value={price} onChange={e => setPrice(e.target.value)}/><input type="number" min="0" step="0.01" placeholder="Precio revendedor (Q)" value={resellerPrice} onChange={e => setResellerPrice(e.target.value)}/><button className="button" disabled={loading} onClick={() => { void saveProduct() }}>Guardar producto</button></div>
+        <div className="admin-form" style={{ marginTop: 20 }}><h3>Mis cuentas bancarias</h3><input placeholder="Banco (Ej. Banrural)" value={bankName} onChange={e => setBankName(e.target.value)}/><input placeholder="Número de cuenta" value={bankAccount} onChange={e => setBankAccount(e.target.value)}/><input placeholder="Titular" value={bankHolder} onChange={e => setBankHolder(e.target.value)}/><button className="button" disabled={loading} onClick={() => { void saveBank() }}>Guardar cuenta</button><ul>{banks.map(b => <li key={b.id}>{b.bank_name} — {b.account_number} ({b.account_holder})</li>)}</ul></div>
+        {message && <p role="status" style={{ color: '#00a3ff', marginTop: 12 }}>{message}</p>}
+      </section>}
     </main>
-
-    <Dialog open={!!modal} onOpenChange={open => { if (!open) setModal(null) }}>
-      <DialogContent className="store-dialog">
-        
-        {(modal === 'login' || modal === 'register') && <>
-          <DialogHeader><DialogTitle>{modal === 'login' ? 'Iniciar sesión' : 'Registrarse'}</DialogTitle></DialogHeader>
-          <div className="auth-form">
-            {modal === 'register' && <label>Nombre<input value={authName} onChange={e => setAuthName(e.target.value)} /></label>}
-            <label>Correo<input type="email" value={authEmail} onChange={e => setAuthEmail(e.target.value)} /></label>
-            <label>Contraseña<input type="password" value={authPassword} onChange={e => setAuthPassword(e.target.value)} /></label>
-            <button className="button" onClick={submitAuth}>{modal === 'login' ? 'Entrar' : 'Crear Cuenta'}</button>
-            {authMessage && <p style={{color: 'red'}}>{authMessage}</p>}
-          </div>
-        </>}
-
-        {modal === 'reseller_apply' && <>
-          <DialogHeader><DialogTitle>Solicitar ser Revendedor</DialogTitle><DialogDescription>Requisito: Vender al menos Q200 mensuales.</DialogDescription></DialogHeader>
-          <div className="auth-form">
-            <label>Nombre Completo<input value={resName} onChange={e => setResName(e.target.value)} /></label>
-            <label>Edad<input type="number" value={resAge} onChange={e => setResAge(e.target.value)} /></label>
-            <label>Ventas estimadas al mes (Q)<input type="number" value={resExpected} onChange={e => setResExpected(e.target.value)} /></label>
-            <button className="button" onClick={applyReseller}>Enviar Solicitud</button>
-          </div>
-        </>}
-
-        {modal === 'my_orders' && <>
-          <DialogHeader><DialogTitle>Mis Pedidos</DialogTitle></DialogHeader>
-          <div style={{ maxHeight: '300px', overflowY: 'auto' }}>
-            {myOrders.map(o => (
-              <div key={o.id} style={{ borderBottom: '1px solid #333', padding: '10px 0' }}>
-                <p><strong>{o.products?.game_name} - {o.products?.detail}</strong></p>
-                <p>Monto: Q{o.amount} | ID: {o.player_id}</p>
-                <p>Estado: <strong style={{ color: o.status === 'completed' ? 'green' : o.status === 'rejected' ? 'red' : 'orange' }}>{o.status === 'completed' ? 'Completado' : o.status === 'rejected' ? 'Rechazado' : 'En Revisión'}</strong></p>
-              </div>
-            ))}
-            {myOrders.length === 0 && <p>No tienes pedidos aún.</p>}
-          </div>
-        </>}
-
-        {modal === 'checkout' && checkoutProduct && <>
-          <DialogHeader><DialogTitle>Completar Pedido</DialogTitle></DialogHeader>
-          <div className="auth-form">
-            <p>Comprando: <strong>{checkoutProduct.detail}</strong> por <strong>{money(checkoutProduct.price)}</strong></p>
-            <label>Tu ID de Jugador<input value={playerId} onChange={e => setPlayerId(e.target.value)} placeholder="Ej. 12345678" /></label>
-            
-            <div style={{ backgroundColor: '#003366', padding: '15px', borderRadius: '8px', margin: '10px 0' }}>
-              <h4 style={{margin: '0 0 10px 0'}}>Datos para depositar:</h4>
-              {banks.map(b => (
-                <div key={b.id} style={{ marginBottom: '10px' }}>
-                  <p style={{ margin: '2px 0' }}>🏦 Banco: <strong>{b.bank_name}</strong></p>
-                  <p style={{ margin: '2px 0' }}>💳 Cuenta: <strong>{b.account_number}</strong></p>
-                  <p style={{ margin: '2px 0' }}>👤 Titular: <strong>{b.account_holder}</strong></p>
-                </div>
-              ))}
-              <p style={{ fontSize: '11px', color: '#ffcc00' }}>⚠️ Deposita el monto EXACTO y sube tu comprobante.</p>
-            </div>
-
-            <label>Número de Referencia (NC)<input value={ncRef} onChange={e => setNcRef(e.target.value)} /></label>
-            <label>Monto Depositado (Q)<input type="number" value={depositAmount} onChange={e => setDepositAmount(e.target.value)} /></label>
-            <label>Fecha del depósito<input type="date" value={depositDate} onChange={e => setDepositDate(e.target.value)} /></label>
-            
-            <label style={{ display: 'flex', alignItems: 'center', gap: '10px', cursor: 'pointer', background: '#222', padding: '10px', borderRadius: '5px' }}>
-              <Upload size={20}/> {receiptFile ? receiptFile.name : 'Subir foto del comprobante'}
-              <input type="file" accept="image/*" onChange={e => setReceiptFile(e.target.files?.[0] || null)} style={{ display: 'none' }} />
-            </label>
-
-            <button className="button" style={{ marginTop: '15px' }} onClick={submitOrder}>Confirmar Pedido</button>
-            {authMessage && <p style={{color: '#00a3ff'}}>{authMessage}</p>}
-          </div>
-        </>}
-
-      </DialogContent>
-    </Dialog>
+    <Dialog open={!!modal} onOpenChange={open => { if (!open) { setModal(null); setMessage('') } }}><DialogContent className="store-dialog">
+      {(modal === 'login' || modal === 'register') && <><DialogHeader><DialogTitle>{modal === 'login' ? 'Iniciar sesión' : 'Registrarse'}</DialogTitle></DialogHeader><div className="auth-form">{modal === 'register' && <label>Nombre completo<input value={fullName} onChange={e => setFullName(e.target.value)}/></label>}<label>Correo<input type="email" value={email} onChange={e => setEmail(e.target.value)}/></label><label>Contraseña<input type="password" value={password} onChange={e => setPassword(e.target.value)}/></label><button className="button" disabled={loading} onClick={() => { void submitAuth() }}>{loading ? 'Procesando...' : modal === 'login' ? 'Entrar' : 'Crear cuenta'}</button>{message && <p role="status">{message}</p>}</div></>}
+      {modal === 'reseller_apply' && <><DialogHeader><DialogTitle>Solicitar ser revendedor</DialogTitle><DialogDescription>Ventas estimadas mínimas: Q200 al mes.</DialogDescription></DialogHeader><div className="auth-form"><label>Nombre completo<input value={fullName} onChange={e => setFullName(e.target.value)}/></label><label>Edad<input type="number" min="18" value={resAge} onChange={e => setResAge(e.target.value)}/></label><label>Ventas estimadas al mes (Q)<input type="number" min="200" value={expectedSales} onChange={e => setExpectedSales(e.target.value)}/></label><button className="button" disabled={loading} onClick={() => { void applyReseller() }}>Enviar solicitud</button>{message && <p role="status">{message}</p>}</div></>}
+      {modal === 'my_orders' && <><DialogHeader><DialogTitle>Mis pedidos</DialogTitle></DialogHeader><div style={{ maxHeight: 300, overflowY: 'auto' }}>{myOrders.map(o => <div key={o.id} style={{ borderBottom: '1px solid #333', padding: '10px 0' }}><p><strong>{o.products?.game_name || 'Producto'} — {o.products?.detail || 'Paquete'}</strong></p><p>Monto: Q{o.amount} | ID jugador: {o.player_id}</p><p>Estado: <strong style={{ color: o.status === 'completed' ? 'green' : o.status === 'rejected' ? 'red' : 'orange' }}>{o.status === 'completed' ? 'Completado' : o.status === 'rejected' ? 'Rechazado' : o.status === 'payment_confirmed' ? 'Pago confirmado' : o.status === 'processing' ? 'En proceso' : 'En revisión'}</strong></p></div>)}{myOrders.length === 0 && <p>No tienes pedidos aún.</p>}</div><button className="button secondary small" onClick={() => { if (user) void fetchMyOrders(user.id) }}><RefreshCw size={14}/> Actualizar</button></>}
+      {modal === 'checkout' && product && <><DialogHeader><DialogTitle>Completar pedido</DialogTitle><DialogDescription>Deposita el monto y adjunta tu comprobante.</DialogDescription></DialogHeader><div className="auth-form"><p>Producto: <strong>{product.detail || product.name}</strong> — <strong>{money(Number(isReseller ? product.reseller_price : product.price))}</strong></p><label>ID de jugador<input value={playerId} onChange={e => setPlayerId(e.target.value)} placeholder="Ej. 12345678"/></label><div style={{ backgroundColor: '#003366', padding: 15, borderRadius: 8, margin: '10px 0' }}><h4 style={{ margin: '0 0 10px' }}>Datos para depositar</h4>{banks.length === 0 && <p>No hay cuentas bancarias disponibles.</p>}{banks.map(b => <div key={b.id} style={{ marginBottom: 10 }}><p>Banco: <strong>{b.bank_name}</strong></p><p>Cuenta: <strong>{b.account_number}</strong></p><p>Titular: <strong>{b.account_holder}</strong></p></div>)}<p style={{ fontSize: 11, color: '#ffcc00' }}>Deposita el monto exacto y sube el comprobante.</p></div><label>Referencia NC<input value={reference} onChange={e => setReference(e.target.value)}/></label><label>Monto depositado (Q)<input type="number" min="0.01" step="0.01" value={depositAmount} onChange={e => setDepositAmount(e.target.value)}/></label><label>Fecha del depósito<input type="date" value={depositDate} onChange={e => setDepositDate(e.target.value)}/></label><label style={{ display: 'flex', alignItems: 'center', gap: 10, background: '#222', padding: 10, borderRadius: 5 }}><Upload size={20}/>{receipt ? receipt.name : 'Seleccionar comprobante'}<input type="file" accept="image/jpeg,image/png,image/webp,application/pdf" onChange={e => setReceipt(e.target.files?.[0] ?? null)}/></label><button className="button" disabled={loading} onClick={() => { void submitOrder() }}>{loading ? 'Enviando...' : 'Confirmar pedido'}</button>{message && <p role="status" style={{ color: '#00a3ff' }}>{message}</p>}</div></>}
+    </DialogContent></Dialog>
   </div>
-}
+      }
