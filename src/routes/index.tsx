@@ -1,7 +1,7 @@
 import { createFileRoute } from '@tanstack/react-router'
 import { useEffect, useState } from 'react'
 import { createClient, type User } from '@supabase/supabase-js'
-import { ArrowUpRight, ArrowRight, Gamepad2, Zap, ShieldCheck, Headphones, Play, Users, ShoppingBag, Search, Menu, X, ChevronRight, Landmark, Check, Globe, Sparkles, Layers, ArrowLeft, Upload } from 'lucide-react'
+import { ArrowUpRight, ArrowRight, Gamepad2, Zap, ShieldCheck, Headphones, Play, Users, ShoppingBag, Search, Menu, X, ChevronRight, Landmark, Check, Globe, Sparkles, Layers, ArrowLeft, Upload, Plus } from 'lucide-react'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog'
 import { ControllerArt } from '@/components/store/controller-art'
 import { money, type Category, type Product } from '@/data/catalog'
@@ -11,44 +11,34 @@ const supabaseUrl = import.meta.env.VITE_SUPABASE_URL as string | undefined
 const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY as string | undefined
 const supabase = supabaseUrl && supabaseAnonKey ? createClient(supabaseUrl, supabaseAnonKey) : null
 
-type DbProduct = { id: string; name: string; detail: string; game_name?: string | null; category: Category; price: number; reseller_price: number; image_url?: string | null; active: boolean; label?: string | null; art?: string | null }
-
-const categories = [
-  { name: 'Videojuegos' as Category, text: 'Lleva tu juego al siguiente nivel', icon: Gamepad2, style: 'gaming' },
-  { name: 'Streaming' as Category, text: 'Tus series, música y más', icon: Play, style: 'streaming' },
-  { name: 'Redes sociales' as Category, text: 'Haz crecer tu presencia digital', icon: Users, style: 'networks' },
-  { name: 'Reventa' as Category, text: 'Más oportunidades para ti', icon: Layers, style: 'resale' },
-]
+type DbProduct = { id: string; name: string; detail: string; game_name?: string | null; category: Category; price: number; reseller_price: number; active: boolean; }
 
 function Home() {
-  const [category, setCategory] = useState<Category>('Todos')
   const [selectedGame, setSelectedGame] = useState<string | null>(null)
   const [menu, setMenu] = useState(false)
   const [modal, setModal] = useState<'login' | 'register' | 'reseller_apply' | 'checkout' | 'my_orders' | null>(null)
   
   const [user, setUser] = useState<User | null>(null)
-  const [userProfile, setUserProfile] = useState<any>(null)
   const [isAdmin, setIsAdmin] = useState(false)
   const [isReseller, setIsReseller] = useState(false) 
 
+  // Datos
   const [dbProducts, setDbProducts] = useState<DbProduct[]>([])
   const [banks, setBanks] = useState<any[]>([])
   const [allUsers, setAllUsers] = useState<any[]>([])
   const [allOrders, setAllOrders] = useState<any[]>([])
   const [myOrders, setMyOrders] = useState<any[]>([])
   
-  // Auth Form
+  // Formularios
   const [authEmail, setAuthEmail] = useState('')
   const [authPassword, setAuthPassword] = useState('')
   const [authName, setAuthName] = useState('')
   const [authMessage, setAuthMessage] = useState('')
 
-  // Reseller Form
   const [resName, setResName] = useState('')
   const [resAge, setResAge] = useState('')
   const [resExpected, setResExpected] = useState('')
 
-  // Checkout Form
   const [checkoutProduct, setCheckoutProduct] = useState<any>(null)
   const [playerId, setPlayerId] = useState('')
   const [ncRef, setNcRef] = useState('')
@@ -56,10 +46,9 @@ function Home() {
   const [depositDate, setDepositDate] = useState('')
   const [receiptFile, setReceiptFile] = useState<File | null>(null)
 
-  // Admin Form
+  const [adminCategory, setAdminCategory] = useState('Videojuegos')
   const [adminGameName, setAdminGameName] = useState('')
   const [adminName, setAdminName] = useState('')
-  const [adminDetail, setAdminDetail] = useState('')
   const [adminPrice, setAdminPrice] = useState('')
   const [adminResellerPrice, setAdminResellerPrice] = useState('')
   const [bankName, setBankName] = useState('')
@@ -73,10 +62,9 @@ function Home() {
       const { data } = await supabase.from('profiles').select('*').eq('id', currentUser.id).single()
       if (!alive) return
       if (data) {
-        setUserProfile(data)
         setIsAdmin(data.role === 'admin')
         setIsReseller(data.role === 'reseller' || data.role === 'admin')
-        if (data.role === 'admin') { void refreshAdminData(); }
+        if (data.role === 'admin') void refreshAdminData();
         void fetchMyOrders(currentUser.id);
       }
     }
@@ -89,7 +77,7 @@ function Home() {
       const sessionUser = session?.user ?? null
       setUser(sessionUser)
       if (sessionUser) fetchUserRole(sessionUser)
-      else { setIsAdmin(false); setIsReseller(false); setUserProfile(null); setMyOrders([]); }
+      else { setIsAdmin(false); setIsReseller(false); setMyOrders([]); }
     })
     return () => { alive = false; listener.subscription.unsubscribe() }
   }, [])
@@ -102,6 +90,7 @@ function Home() {
     if (banksData) setBanks(banksData)
     const { data: ordersData } = await supabase.from('orders').select('*, products(detail, game_name), profiles(full_name)').order('created_at', { ascending: false })
     if (ordersData) setAllOrders(ordersData)
+    void refreshProducts()
   }
 
   async function fetchMyOrders(userId: string) {
@@ -115,7 +104,6 @@ function Home() {
     const { data } = await supabase.from('products').select('*').eq('active', true)
     if (data) setDbProducts(data as DbProduct[])
   }
-  
   useEffect(() => { if (supabase) { void refreshProducts(); } }, [])
 
   // --- ACCIONES ---
@@ -136,8 +124,8 @@ function Home() {
     const { error } = await supabase.from('profiles').update({
       full_name: resName, age: Number(resAge), expected_sales: Number(resExpected), application_status: 'pending'
     }).eq('id', user.id)
-    if (error) setAuthMessage(error.message)
-    else { setAuthMessage('Solicitud enviada. Espera la aprobación.'); setTimeout(() => setModal(null), 2000); }
+    if (error) alert("Error al enviar solicitud: " + error.message)
+    else { alert('Solicitud enviada. El admin la revisará pronto.'); setModal(null); }
   }
 
   async function submitOrder() {
@@ -148,15 +136,15 @@ function Home() {
     const fileName = `${user.id}-${Date.now()}.${fileExt}`
     const { error: uploadError } = await supabase.storage.from('boletas').upload(fileName, receiptFile)
     
-    if (uploadError) { setAuthMessage('Error al subir foto: ' + uploadError.message); return }
+    if (uploadError) { alert('Error al subir foto: ' + uploadError.message); setAuthMessage(''); return }
     const { data: urlData } = supabase.storage.from('boletas').getPublicUrl(fileName)
 
     const { error } = await supabase.from('orders').insert({
       user_id: user.id, product_id: checkoutProduct.id, player_id: playerId, amount: Number(depositAmount), reference_nc: ncRef, date: new Date(depositDate), receipt_url: urlData.publicUrl, status: 'pending'
     })
 
-    if (error) setAuthMessage('Error al crear pedido: ' + error.message)
-    else { setAuthMessage('¡Pedido enviado! Revisaremos tu pago pronto.'); setTimeout(() => { setModal(null); fetchMyOrders(user.id); }, 2500); }
+    if (error) { alert('Error al crear pedido: ' + error.message); setAuthMessage('') }
+    else { alert('¡Pedido enviado!'); setModal(null); fetchMyOrders(user.id); }
   }
 
   async function updateOrderStatus(orderId: string, status: string) {
@@ -169,33 +157,51 @@ function Home() {
     if (!supabase || !isAdmin) return
     await supabase.from('profiles').update({ role: status === 'approved' ? 'reseller' : 'customer', application_status: status }).eq('id', userId)
     void refreshAdminData()
+    alert(`Solicitud ${status === 'approved' ? 'Aprobada' : 'Rechazada'}`)
   }
 
   async function saveProduct() {
     if (!supabase || !isAdmin) return
-    await supabase.from('products').insert({ name: adminName, detail: adminDetail, game_name: adminGameName, category: 'Videojuegos', price: Number(adminPrice), reseller_price: Number(adminResellerPrice), active: true })
-    void refreshProducts(); setAdminName(''); setAdminDetail(''); setAdminPrice('');
+    if (!adminGameName || !adminName || !adminPrice) { alert("Llena los campos obligatorios"); return; }
+    
+    const { error } = await supabase.from('products').insert({ 
+      name: adminName, 
+      detail: adminName, // Usamos el mismo nombre para mostrar
+      game_name: adminGameName, 
+      category: adminCategory, 
+      price: Number(adminPrice), 
+      reseller_price: Number(adminResellerPrice || adminPrice), 
+      active: true 
+    })
+    
+    if (error) alert("Error al guardar: " + error.message)
+    else {
+      alert("¡Producto guardado!")
+      void refreshProducts(); 
+      setAdminGameName(''); setAdminName(''); setAdminPrice(''); setAdminResellerPrice('');
+    }
   }
 
   async function saveBank() {
     if (!supabase || !isAdmin) return
-    await supabase.from('bank_accounts').insert({ bank_name: bankName, account_number: bankAccount, account_holder: bankHolder })
-    void refreshAdminData(); setBankName(''); setBankAccount(''); setBankHolder('');
+    if (!bankName || !bankAccount) { alert("Llena los datos del banco"); return; }
+    const { error } = await supabase.from('bank_accounts').insert({ bank_name: bankName, account_number: bankAccount, account_holder: bankHolder })
+    if (error) alert("Error: " + error.message)
+    else {
+      alert("Cuenta guardada")
+      void refreshAdminData(); setBankName(''); setBankAccount(''); setBankHolder('');
+    }
   }
 
-  const availableGames = Array.from(new Set(dbProducts.filter(p => category === 'Todos' || p.category === category).map(p => p.game_name || 'Otros')))
-  const filteredProducts = dbProducts.filter(p => {
-    if (category !== 'Todos' && p.category !== category) return false;
-    if (selectedGame && (p.game_name || 'Otros') !== selectedGame) return false;
-    return true;
-  })
+  // Lógica de categorías y juegos
+  const availableGames = Array.from(new Set(dbProducts.map(p => p.game_name || 'Otros')))
+  const filteredProducts = dbProducts.filter(p => selectedGame === (p.game_name || 'Otros'))
 
   return <div className="storefront">
     <header className="header wrap">
       <a className="brand" href="#inicio"><img className="brand-logo" src="/images/samuel-store-logo.jpg" alt="Samuel Store"/></a>
       <nav className={menu ? 'navigation open' : 'navigation'}>
         <a className="active" href="#inicio" onClick={() => setMenu(false)}>Inicio</a>
-        <a href="#categorias" onClick={() => setMenu(false)}>Categorías</a>
         <a href="#catalogo" onClick={() => setMenu(false)}>Catálogo</a>
         <button onClick={() => { user ? setModal('my_orders') : setModal('login'); setMenu(false) }}>Mis pedidos</button>
       </nav>
@@ -222,30 +228,20 @@ function Home() {
         <div className="hero-art"><ControllerArt/></div>
       </section>
 
-      <section className="section wrap" id="categorias">
-        <div className="category-grid">
-          {categories.map(({name, text, icon: Icon, style}) => 
-            <button key={name} className={`category-card ${style} ${category === name ? 'selected' : ''}`} onClick={() => { setCategory(name); setSelectedGame(null); document.getElementById('catalogo')?.scrollIntoView({ behavior: 'smooth' }) }}>
-              <span className="category-icon"><Icon size={27}/></span><h3>{name}</h3><p>{text}</p>
-            </button>
-          )}
-        </div>
-      </section>
-
       <section className="section catalog wrap" id="catalogo">
         <div className="section-heading">
           <div>
-            <h2>{selectedGame ? `Paquetes para ${selectedGame}` : 'Catálogo'}<span className="blue-text">.</span></h2>
+            <h2>Videojuegos<span className="blue-text">.</span></h2>
             {!isReseller && user && <p style={{fontSize: '12px', color: '#f06675'}}>¿Quieres ganar más? <span style={{textDecoration: 'underline', cursor: 'pointer'}} onClick={() => setModal('reseller_apply')}>Solicita ser revendedor aquí</span></p>}
           </div>
-          {selectedGame && <button className="button secondary small" onClick={() => setSelectedGame(null)}><ArrowLeft size={16}/> Volver</button>}
+          {selectedGame && <button className="button secondary small" onClick={() => setSelectedGame(null)}><ArrowLeft size={16}/> Volver a Juegos</button>}
         </div>
         
         {!selectedGame && (
           <div className="category-grid">
-            {availableGames.map(game => (
+            {availableGames.length === 0 ? <p style={{ color: 'gray' }}>No hay juegos creados. Crea uno en el panel de abajo.</p> : availableGames.map(game => (
               <button key={game} className="category-card" onClick={() => setSelectedGame(game)}>
-                <span className="category-icon"><Gamepad2 size={27}/></span><h3>{game}</h3><p>Ver paquetes</p>
+                <span className="category-icon"><Gamepad2 size={27}/></span><h3>{game}</h3><p>Ver paquetes de recarga</p>
               </button>
             ))}
           </div>
@@ -253,7 +249,7 @@ function Home() {
 
         {selectedGame && (
           <div className="product-grid">
-            {filteredProducts.map(p => {
+            {filteredProducts.length === 0 ? <p style={{ color: 'gray' }}>No hay paquetes para este juego.</p> : filteredProducts.map(p => {
               const displayPrice = isReseller ? p.reseller_price : p.price;
               return (
                 <article className="product-card" key={p.id}>
@@ -271,14 +267,26 @@ function Home() {
         )}
       </section>
 
-      {/* PANEL DE ADMIN */}
       {isAdmin && (
-        <section className="section wrap" id="admin-panel" style={{ borderTop: '2px solid #00a3ff', marginTop: '50px' }}>
+        <section className="section wrap" id="admin-panel" style={{ borderTop: '2px solid #00a3ff', marginTop: '50px', paddingBottom: '50px' }}>
           <h2>Panel de Administración</h2>
           
-          {/* Pedidos Pendientes */}
           <div className="admin-form" style={{ marginTop: '20px' }}>
-            <h3>Pedidos Pendientes de Aprobación</h3>
+            <h3>Solicitudes de Revendedor Pendientes</h3>
+            {allUsers.filter(u => u.application_status === 'pending').map(u => (
+              <div key={u.id} className="admin-product-row" style={{ backgroundColor: '#222', padding: '10px', margin: '5px 0' }}>
+                <span><strong>{u.full_name}</strong> quiere ser revendedor.</span>
+                <div>
+                  <button className="button small" style={{backgroundColor: 'green'}} onClick={() => approveReseller(u.id, 'approved')}>Aprobar</button>
+                  <button className="button small" style={{backgroundColor: 'red', marginLeft: '5px'}} onClick={() => approveReseller(u.id, 'rejected')}>Rechazar</button>
+                </div>
+              </div>
+            ))}
+            {allUsers.filter(u => u.application_status === 'pending').length === 0 && <p>No hay solicitudes pendientes.</p>}
+          </div>
+
+          <div className="admin-form" style={{ marginTop: '20px' }}>
+            <h3>Pedidos Pendientes de Aprobar</h3>
             <div style={{ maxHeight: '400px', overflowY: 'auto' }}>
               {allOrders.filter(o => o.status === 'pending').map(o => (
                 <div key={o.id} className="admin-product-row" style={{ backgroundColor: '#222', padding: '10px', margin: '5px 0', flexDirection: 'column', alignItems: 'flex-start' }}>
@@ -295,38 +303,25 @@ function Home() {
             </div>
           </div>
 
-          {/* Solicitudes de Revendedor */}
           <div className="admin-form" style={{ marginTop: '20px' }}>
-            <h3>Solicitudes de Revendedor</h3>
-            {allUsers.filter(u => u.application_status === 'pending').map(u => (
-              <div key={u.id} className="admin-product-row" style={{ backgroundColor: '#222', padding: '10px', margin: '5px 0' }}>
-                <span>{u.full_name}</span>
-                <div>
-                  <button className="button small" style={{backgroundColor: 'green'}} onClick={() => approveReseller(u.id, 'approved')}>Aprobar</button>
-                  <button className="button small" style={{backgroundColor: 'red', marginLeft: '5px'}} onClick={() => approveReseller(u.id, 'rejected')}>Rechazar</button>
-                </div>
-              </div>
-            ))}
+            <h3>Crear Juego / Paquete</h3>
+            <label>Categoría Principal<select value={adminCategory} onChange={e => setAdminCategory(e.target.value)}>
+              <option>Videojuegos</option>
+            </select></label>
+            <input placeholder="Nombre del Juego (Ej. Free Fire)" value={adminGameName} onChange={e => setAdminGameName(e.target.value)} />
+            <input placeholder="Nombre del Paquete (Ej. 1000 Diamantes)" value={adminName} onChange={e => setAdminName(e.target.value)} />
+            <input type="number" placeholder="Precio Cliente (Q)" value={adminPrice} onChange={e => setAdminPrice(e.target.value)} />
+            <input type="number" placeholder="Precio Revendedor (Q)" value={adminResellerPrice} onChange={e => setAdminResellerPrice(e.target.value)} />
+            <button className="button" onClick={saveProduct}>Guardar Producto</button>
           </div>
 
-          {/* Cuentas de Banco */}
           <div className="admin-form" style={{ marginTop: '20px' }}>
             <h3>Mis Cuentas Bancarias</h3>
-            <input placeholder="Banco" value={bankName} onChange={e => setBankName(e.target.value)} />
+            <input placeholder="Banco (Ej. Banrural)" value={bankName} onChange={e => setBankName(e.target.value)} />
             <input placeholder="Número de Cuenta" value={bankAccount} onChange={e => setBankAccount(e.target.value)} />
             <input placeholder="Titular" value={bankHolder} onChange={e => setBankHolder(e.target.value)} />
             <button className="button" onClick={saveBank}>Guardar Cuenta</button>
-            <ul>{banks.map(b => <li key={b.id}>{b.bank_name} - {b.account_number}</li>)}</ul>
-          </div>
-
-          {/* Crear Juego / Producto */}
-          <div className="admin-form" style={{ marginTop: '20px' }}>
-            <h3>Crear Juego / Paquete</h3>
-            <input placeholder="Nombre del Juego (Ej. Free Fire)" value={adminGameName} onChange={e => setAdminGameName(e.target.value)} />
-            <input placeholder="Paquete (Ej. 1000 Diamantes)" value={adminName} onChange={e => {setAdminName(e.target.value); setAdminDetail(e.target.value)}} />
-            <input type="number" placeholder="Precio Cliente" value={adminPrice} onChange={e => setAdminPrice(e.target.value)} />
-            <input type="number" placeholder="Precio Revendedor" value={adminResellerPrice} onChange={e => setAdminResellerPrice(e.target.value)} />
-            <button className="button" onClick={saveProduct}>Guardar Producto</button>
+            <ul>{banks.map(b => <li key={b.id}>{b.bank_name} - {b.account_number} ({b.account_holder})</li>)}</ul>
           </div>
         </section>
       )}
@@ -353,7 +348,6 @@ function Home() {
             <label>Edad<input type="number" value={resAge} onChange={e => setResAge(e.target.value)} /></label>
             <label>Ventas estimadas al mes (Q)<input type="number" value={resExpected} onChange={e => setResExpected(e.target.value)} /></label>
             <button className="button" onClick={applyReseller}>Enviar Solicitud</button>
-            {authMessage && <p>{authMessage}</p>}
           </div>
         </>}
 
