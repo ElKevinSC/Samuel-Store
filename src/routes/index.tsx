@@ -112,7 +112,7 @@ if (p.error || b.error || o.error) {
         : `Error en pedidos: ${o.error?.message}`
   )
 }
-  
+}  
 
   async function loadUserRole(current: User) {
     if (!supabase) return
@@ -657,4 +657,4 @@ function changeCartQuantity(productId: string, quantity: number) {
       </Dialog>
     </div>
   )
-              }
+  }
