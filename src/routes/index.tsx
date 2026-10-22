@@ -10,13 +10,16 @@ export const Route = createFileRoute('/')({ component: Home })
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL as string | undefined
 const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY as string | undefined
 const supabase = supabaseUrl && supabaseAnonKey ? createClient(supabaseUrl, supabaseAnonKey) : null
+
 type DbProduct = { id: string; name: string; detail: string; category: Category; price: number; reseller_price: number; image_url?: string | null; active: boolean; label?: string | null; art?: string | null }
+
 const categories = [
   { name: 'Videojuegos' as Category, text: 'Lleva tu juego al siguiente nivel', icon: Gamepad2, style: 'gaming' },
   { name: 'Streaming' as Category, text: 'Tus series, música y más', icon: Play, style: 'streaming' },
   { name: 'Redes sociales' as Category, text: 'Haz crecer tu presencia digital', icon: Users, style: 'networks' },
   { name: 'Reventa' as Category, text: 'Más oportunidades para ti', icon: Layers, style: 'resale' },
 ]
+
 function Home() {
   const [category, setCategory] = useState<Category>('Todos')
   const [role, setRole] = useState<'client' | 'reseller'>('client')
@@ -39,21 +42,45 @@ function Home() {
   const [adminResellerPrice, setAdminResellerPrice] = useState('')
   const [adminImage, setAdminImage] = useState('')
   const [catalogReady, setCatalogReady] = useState(false)
+
+  // MEJORA: Unificamos la carga de sesión y la consulta del rol en un solo lugar
   useEffect(() => {
     if (!supabase) return
     let alive = true
-    supabase.auth.getSession().then(({ data }) => { if (alive) setUser(data.session?.user ?? null) })
-    const { data: listener } = supabase.auth.onAuthStateChange((_event, session) => { if (alive) setUser(session?.user ?? null) })
+
+    const fetchUserRole = async (currentUser: User) => {
+      const { data, error } = await supabase.from('profiles').select('role').eq('id', currentUser.id).single()
+      if (!alive) return
+      
+      if (error) {
+        alert("Error al leer perfil de Supabase: " + error.message)
+        setIsAdmin(false)
+      } else if (data) {
+        alert("Rol detectado: " + data.role) // Alerta temporal para confirmar
+        const adminStatus = data.role === 'admin'
+        setIsAdmin(adminStatus)
+        if (adminStatus) void refreshUsers()
+      }
+    }
+
+    supabase.auth.getSession().then(({ data }) => {
+      if (!alive) return
+      const sessionUser = data.session?.user ?? null
+      setUser(sessionUser)
+      if (sessionUser) fetchUserRole(sessionUser)
+    })
+
+    const { data: listener } = supabase.auth.onAuthStateChange((_event, session) => {
+      if (!alive) return
+      const sessionUser = session?.user ?? null
+      setUser(sessionUser)
+      if (sessionUser) fetchUserRole(sessionUser)
+      else { setIsAdmin(false); setAllUsers([]); }
+    })
+
     return () => { alive = false; listener.subscription.unsubscribe() }
   }, [])
-  useEffect(() => {
-    if (!supabase || !user) { setIsAdmin(false); return }
-    supabase.from('profiles').select('role').eq('id', user.id).maybeSingle().then(({ data }) => {
-      setIsAdmin(data?.role === 'admin')
-      if (data?.role === 'admin') void refreshUsers()
-    })
-  }, [user])
-  
+
   async function refreshUsers() {
     if (!supabase) return
     const { data, error } = await supabase.from('profiles').select('id, full_name, role')
@@ -73,7 +100,9 @@ function Home() {
     if (error) { setAuthMessage(`No se pudo cargar el catálogo: ${error.message}`); return }
     setDbProducts((data ?? []) as DbProduct[]); setCatalogReady(true)
   }
+  
   useEffect(() => { if (supabase) void refreshProducts() }, [])
+  
   const sourceProducts: Product[] = catalogReady ? dbProducts.map(p => ({ id: p.id, name: p.name, detail: p.detail, category: p.category, price: Number(p.price), resellerPrice: Number(p.reseller_price), art: p.art || 'reseller', label: p.label || p.category })) : demoProducts
   const products = sourceProducts.filter(p => (category === 'Todos' || p.category === category) && `${p.name} ${p.detail}`.toLowerCase().includes(search.toLowerCase()))
   
@@ -109,7 +138,17 @@ function Home() {
     <header className="header wrap">
       <a className="brand" href="#inicio" aria-label="Samuel Store, inicio"><img className="brand-logo" src="/images/samuel-store-logo.jpg" alt="Samuel Store" width="1280" height="1280"/></a>
       <nav className={menu ? 'navigation open' : 'navigation'} aria-label="Principal"><a className="active" href="#inicio" onClick={() => setMenu(false)}>Inicio</a><a href="#categorias" onClick={() => setMenu(false)}>Categorías</a><a href="#catalogo" onClick={() => setMenu(false)}>Catálogo</a><button onClick={() => { setModal('orders'); setMenu(false) }}>Mis pedidos</button></nav>
-      <div className="account">{user ? <><span className="login">{user.email}</span>{isAdmin && <button className="button small" onClick={() => { setAuthMessage(''); setModal(null); document.getElementById('admin-panel')?.scrollIntoView({ behavior: 'smooth' }) }}>Administrar</button>}<button className="button small" onClick={async () => { await supabase?.auth.signOut(); setIsAdmin(false); setAuthMessage('Sesión cerrada.') }}>Salir</button></> : <><button className="login" onClick={() => { setAuthMessage(''); setModal('login') }}>Iniciar sesión</button><button className="button small" onClick={() => { setAuthMessage(''); setModal('register') }}>Registrarse <ArrowUpRight size={15}/></button></>}<button className="mobile-menu" aria-label={menu ? 'Cerrar menú' : 'Abrir menú'} onClick={() => setMenu(!menu)}>{menu ? <X/> : <Menu/>}</button></div>
+      <div className="account">
+        {user ? <>
+          <span className="login">{user.email}</span>
+          {isAdmin && <button className="button small" style={{ backgroundColor: '#00a3ff', color: 'white', fontWeight: 'bold' }} onClick={() => { setAuthMessage(''); setModal(null); document.getElementById('admin-panel')?.scrollIntoView({ behavior: 'smooth' }) }}>Administrar</button>}
+          <button className="button small" onClick={async () => { await supabase?.auth.signOut(); setIsAdmin(false); setAuthMessage('Sesión cerrada.') }}>Salir</button>
+        </> : <>
+          <button className="login" onClick={() => { setAuthMessage(''); setModal('login') }}>Iniciar sesión</button>
+          <button className="button small" onClick={() => { setAuthMessage(''); setModal('register') }}>Registrarse <ArrowUpRight size={15}/></button>
+        </>}
+        <button className="mobile-menu" aria-label={menu ? 'Cerrar menú' : 'Abrir menú'} onClick={() => setMenu(!menu)}>{menu ? <X/> : <Menu/>}</button>
+      </div>
     </header>
     <main>
       <section className="hero wrap" id="inicio">
@@ -124,6 +163,7 @@ function Home() {
         <div className="product-grid">{products.map(p => <article className="product-card" key={p.id}><div className={`product-art ${p.art}`}><span className="product-tag">{p.label}</span><span className="art-demo">DEMO</span>{p.image_url ? <img src={p.image_url} alt={p.name} className="db-product-image"/> : p.art === 'freefire' ? <div className="game-title">FREE F<span className="fire-i">I</span>RE<small>BATTLEGROUNDS</small></div> : p.art === 'netflix' ? <div className="netflix-logo">N</div> : p.art === 'pubg' ? <div className="pubg-logo">PUBG<small>MOBILE</small></div> : p.art === 'spotify' ? <div className="spotify-logo"><svg viewBox="0 0 100 100" aria-hidden="true"><circle cx="50" cy="50" r="48" fill="currentColor"/><g fill="none" stroke="#09271a" strokeWidth="7" strokeLinecap="round"><path d="M23 37Q50 26 78 41M27 52Q50 43 73 56M31 66Q50 59 68 69"/></g></svg><span>Spotify</span></div> : p.art === 'social' ? <Users size={70}/> : <Layers size={70}/>}</div><div className="product-info"><div className="product-category">{p.category}</div><h3>{p.name}</h3><p>{p.detail}</p><div className="price-row"><div><span className="price-caption">Precio {role === 'client' ? 'cliente' : 'revendedor'}</span><strong>{money(role === 'client' ? p.price : p.resellerPrice)}</strong></div><button aria-label={`Ver ${p.name}`} onClick={() => setProduct(p)}><ArrowUpRight size={21}/></button></div><div className="other-price">{role === 'client' ? 'Revendedor' : 'Cliente'} <span>{money(role === 'client' ? p.resellerPrice : p.price)}</span></div></div></article>)}</div>
         {products.length === 0 && <div className="empty"><Search size={30}/><h3>No encontramos ese producto</h3><p>Prueba con otra búsqueda o explora todas las categorías.</p><button className="button secondary" onClick={() => { setSearch(''); setCategory('Todos') }}>Ver todos los productos</button></div>}
       </section>
+      
       {isAdmin && <section className="section wrap" id="admin-panel"><div className="section-heading"><div><div className="eyebrow">ACCESO PROTEGIDO</div><h2>Panel de administración</h2></div></div><div className="admin-form"><h3>Agregar producto</h3><label>Nombre<input value={adminName} onChange={e => setAdminName(e.target.value)} /></label><label>Descripción<input value={adminDetail} onChange={e => setAdminDetail(e.target.value)} /></label><label>Categoría<select value={adminCategory} onChange={e => setAdminCategory(e.target.value as Category)}><option>Videojuegos</option><option>Streaming</option><option>Redes sociales</option><option>Reventa</option></select></label><label>Precio cliente (Q)<input type="number" min="0.01" step="0.01" value={adminPrice} onChange={e => setAdminPrice(e.target.value)} /></label><label>Precio revendedor (Q)<input type="number" min="0.01" step="0.01" value={adminResellerPrice} onChange={e => setAdminResellerPrice(e.target.value)} /></label><label>URL de imagen<input value={adminImage} onChange={e => setAdminImage(e.target.value)} placeholder="https://..." /></label><button className="button" onClick={() => void saveProduct()}>Guardar producto</button>{authMessage && <p role="status">{authMessage}</p>}
         <h3>Gestión de Usuarios</h3>
         <div style={{ maxHeight: '250px', overflowY: 'auto', marginBottom: '20px', border: '1px solid #263b55', padding: '10px', borderRadius: '8px' }}>
@@ -139,10 +179,14 @@ function Home() {
           ))}
         </div>
         <h3>Productos publicados</h3>{dbProducts.map(p => <div key={p.id} className="admin-product-row"><span>{p.name} — Q {Number(p.price).toFixed(2)}</span><button className="button secondary" onClick={() => void deleteProduct(p.id)}>Eliminar</button></div>)}</div></section>}
+      
       <section className="reseller-banner wrap"><div className="banner-symbol"><Users size={43}/></div><div><div className="eyebrow">CRECE CON SAMUEL STORE</div><h2>Tu próximo negocio puede empezar aquí.</h2><p>Explora precios de reventa y encuentra tu siguiente oportunidad digital.</p></div><button className="button secondary" onClick={() => { setRole('reseller'); selectCategory('Todos') }}>Ver precios de reventa <ArrowUpRight size={17}/></button></section>
+      
       <section className="section wrap payment" id="pagos"><div className="payment-intro"><div className="eyebrow">SIMPLE, PASO A PASO</div><h2>Tu pedido.<br/>A tu manera.</h2><p>Una vista previa del proceso de pedidos y pagos manuales en Guatemala.</p><div className="bank"><Landmark size={24}/><div>Cajas Rurales<strong>Banrural</strong></div><span>Pago manual</span></div></div><div className="payment-steps"><div><span className="step">01</span><div><h3>Elige tu producto</h3><p>Explora el catálogo y revisa el precio para cliente o revendedor.</p></div><ShoppingBag size={21}/></div><div><span className="step">02</span><div><h3>Realiza tu depósito</h3><p>Al habilitar las compras, recibirás los datos verificados para depositar en una Caja Rural Banrural.</p></div><Landmark size={21}/></div><div><span className="step">03</span><div><h3>Comparte tu comprobante</h3><p>El equipo revisará el pago antes de completar tu pedido.</p></div><Check size={21}/></div><p className="payment-notice"><ShieldCheck size={16}/> Demostración: los pedidos y depósitos aún no están habilitados. No realices pagos.</p></div></section>
     </main>
+    
     <footer className="footer wrap"><a className="brand footer-brand" href="#inicio" aria-label="Samuel Store, inicio"><img className="brand-logo" src="/images/samuel-store-logo.jpg" alt="Samuel Store" width="1280" height="1280" loading="lazy"/></a><p>En Samuel Store, tu meta es nuestra meta.<small>© {new Date().getFullYear()} Samuel Store · Guatemala</small></p><a href="#pagos">Pedidos y pagos <ChevronRight size={14}/></a><span className="footer-demo"><Globe size={14}/> Interfaz de demostración</span></footer>
+    
     <Dialog open={!!modal || !!product} onOpenChange={open => { if (!open) { setModal(null); setProduct(null) } }}><DialogContent className="store-dialog"><DialogHeader><span className="eyebrow">SAMUEL STORE · CUENTA SEGURA</span><DialogTitle>{product ? product.name : modal === 'login' ? 'Iniciar sesión' : modal === 'register' ? 'Forma parte de Samuel Store' : 'Tus pedidos, en un solo lugar'}</DialogTitle><DialogDescription>{product ? `${product.detail}. Consulta los precios disponibles en el catálogo.` : modal === 'orders' ? 'El historial de pedidos se habilitará en una siguiente fase.' : 'Accede a tu cuenta de Samuel Store.'}</DialogDescription></DialogHeader>{!product && modal !== 'orders' && <div className="auth-form">
       {!supabase && <p className="auth-message">Primero configura las variables de Supabase en Netlify.</p>}
       {modal === 'register' && <label>Nombre completo<input value={authName} onChange={e => setAuthName(e.target.value)} autoComplete="name" placeholder="Tu nombre" /></label>}
@@ -152,7 +196,9 @@ function Home() {
       {authMessage && <p className="auth-message" role="status">{authMessage}</p>}
       {user && <p>Sesión activa: {user.email}</p>}
     </div>}
+    
     {!product && modal === null && isAdmin && <div className="admin-form"><h3>Administrar catálogo</h3><label>Nombre<input value={adminName} onChange={e => setAdminName(e.target.value)} /></label><label>Descripción<input value={adminDetail} onChange={e => setAdminDetail(e.target.value)} /></label><label>Categoría<select value={adminCategory} onChange={e => setAdminCategory(e.target.value as Category)}><option>Videojuegos</option><option>Streaming</option><option>Redes sociales</option><option>Reventa</option></select></label><label>Precio cliente (Q)<input type="number" min="0.01" step="0.01" value={adminPrice} onChange={e => setAdminPrice(e.target.value)} /></label><label>Precio revendedor (Q)<input type="number" min="0.01" step="0.01" value={adminResellerPrice} onChange={e => setAdminResellerPrice(e.target.value)} /></label><label>URL de imagen (opcional)<input value={adminImage} onChange={e => setAdminImage(e.target.value)} placeholder="https://..." /></label><button className="button" onClick={() => void saveProduct()}>Guardar producto</button>{authMessage && <p role="status">{authMessage}</p>}<h3>Productos actuales</h3>{dbProducts.map(p => <div key={p.id} className="admin-product-row"><span>{p.name} — Q {Number(p.price).toFixed(2)}</span><button className="button secondary" onClick={() => void deleteProduct(p.id)}>Eliminar</button></div>)}</div>}
+    
     {product ? <><div className="modal-prices"><div>Cliente<strong>{money(product.price)}</strong></div><div>Revendedor<strong>{money(product.resellerPrice)}</strong></div></div><div className="modal-notice"><ShieldCheck size={22}/><p>Vista previa del producto. Las compras y los pagos están deshabilitados. No se crea ningún pedido.</p></div><a className="button" href="#pagos" onClick={() => setProduct(null)}>Conocer el proceso de pago <ArrowRight size={17}/></a></> : <div className="modal-notice">{modal === 'orders' ? <ShoppingBag size={28}/> : <ShieldCheck size={28}/>}<p>{modal === 'orders' ? (user ? 'El historial de pedidos se habilitará en una siguiente fase.' : 'Inicia sesión para consultar tus pedidos cuando el módulo esté habilitado.') : 'Crea tu cuenta o inicia sesión para acceder a tu espacio digital.'}</p></div>}<button className="button secondary" onClick={() => { setModal(null); setProduct(null) }}>Seguir explorando <ArrowRight size={16}/></button></DialogContent></Dialog>
   </div>
-        }
+}
