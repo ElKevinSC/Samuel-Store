@@ -50,6 +50,11 @@ function Home() {
   const [resAge, setResAge] = useState('')
   const [expectedSales, setExpectedSales] = useState('')
   const [product, setProduct] = useState<Product | null>(null)
+  
+const [cart, setCart] = useState<
+  { product: Product; quantity: number }[]
+>([])
+
   const [playerId, setPlayerId] = useState('')
   const [reference, setReference] = useState('')
   const [depositAmount, setDepositAmount] = useState('')
@@ -93,8 +98,21 @@ function Home() {
       }))
       setOrders(list)
     }
-    if (p.error || b.error || o.error) setMessage('No se pudieron actualizar algunos datos. Revisa las políticas y columnas de Supabase.')
-  }
+    
+if (p.error || b.error || o.error) {
+  console.error('Error en perfiles:', p.error?.message)
+  console.error('Error en cuentas bancarias:', b.error?.message)
+  console.error('Error en pedidos:', o.error?.message)
+
+  setMessage(
+    b.error
+      ? `Error al cargar cuentas bancarias: ${b.error.message}`
+      : p.error
+        ? `Error en perfiles: ${p.error.message}`
+        : `Error en pedidos: ${o.error?.message}`
+  )
+}
+  
 
   async function loadUserRole(current: User) {
     if (!supabase) return
@@ -183,6 +201,41 @@ function Home() {
       await loadUserRole(user)
     }
   }
+
+function addToCart(p: Product) {
+  setCart(current => {
+    const found = current.find(item => item.product.id === p.id)
+
+    if (found) {
+      return current.map(item =>
+        item.product.id === p.id
+          ? { ...item, quantity: item.quantity + 1 }
+          : item
+      )
+    }
+
+    return [...current, { product: p, quantity: 1 }]
+  })
+
+  setMessage(`${p.detail || p.name} agregado al carrito.`)
+}
+
+function changeCartQuantity(productId: string, quantity: number) {
+  if (quantity <= 0) {
+    setCart(current =>
+      current.filter(item => item.product.id !== productId)
+    )
+    return
+  }
+
+  setCart(current =>
+    current.map(item =>
+      item.product.id === productId
+        ? { ...item, quantity }
+        : item
+    )
+  )
+}
 
   async function submitOrder() {
     if (!supabase || !user || !product) {
