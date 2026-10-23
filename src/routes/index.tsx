@@ -444,7 +444,105 @@ function changeCartQuantity(productId: string, quantity: number) {
               )}
             </div>
             {selectedGame && <button className="button secondary small" onClick={() => setSelectedGame(null)}><ArrowLeft size={16} /> Volver a juegos</button>}
-            <button className="button secondary small" onClick={() => { void refreshProducts() }}><RefreshCw size={15} /></button>
+            <button className="button secondary small" onClick={() => { void refreshProducts() }}><RefreshCw size={15} /></button> 
+           {cart.length > 0 && (
+            <div
+              className="admin-form"
+              style={{
+                marginTop: 20,
+                padding: 16,
+                border: '1px solid #00a3ff',
+                borderRadius: 12
+              }}
+            >
+              <h3>🛒 Mi carrito ({cart.length} paquetes)</h3>
+
+              {cart.map(item => (
+                <div
+                  key={item.product.id}
+                  style={{
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    alignItems: 'center',
+                    gap: 10,
+                    padding: '10px 0',
+                    borderBottom: '1px solid #333'
+                  }}
+                >
+                  <div>
+                    <strong>{item.product.detail || item.product.name}</strong>
+                    <p>
+                      {money(Number(isReseller
+                        ? item.product.reseller_price
+                        : item.product.price) * item.quantity)}
+                    </p>
+                  </div>
+
+                  <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                    <button
+                      className="button small"
+                      onClick={() => changeCartQuantity(
+                        item.product.id,
+                        item.quantity - 1
+                      )}
+                    >
+                      −
+                    </button>
+
+                    <span>{item.quantity}</span>
+
+                    <button
+                      className="button small"
+                      onClick={() => changeCartQuantity(
+                        item.product.id,
+                        item.quantity + 1
+                      )}
+                    >
+                      +
+                    </button>
+                  </div>
+                </div>
+              ))}
+
+              <h3>
+                Total: {money(cart.reduce((total, item) =>
+                  total + Number(isReseller
+                    ? item.product.reseller_price
+                    : item.product.price) * item.quantity, 0
+                ))}
+              </h3>
+
+              <button
+                className="button"
+                onClick={() => {
+                  if (!user) {
+                    setModal('login')
+                    return
+                  }
+
+                  setProduct(cart[0].product)
+                  setPlayerId('')
+                  setDepositAmount(String(cart.reduce((total, item) =>
+                    total + Number(isReseller
+                      ? item.product.reseller_price
+                      : item.product.price) * item.quantity, 0
+                  )))
+                  setMessage('El carrito está listo.')
+                  setModal('checkout')
+                }}
+              >
+                Continuar al pago
+              </button>
+
+              <button
+                className="button secondary small"
+                style={{ marginLeft: 8 }}
+                onClick={() => setCart([])}
+              >
+                Vaciar carrito
+              </button>
+            </div>
+          )}           
           </div>
 
           {!selectedGame && (
@@ -511,7 +609,7 @@ function changeCartQuantity(productId: string, quantity: number) {
                             <strong>{money(displayPrice)}</strong>
                           </div>
                           <button
-  className="button"
+  className="button small"
   onClick={() => {
     if (!user) {
       setModal('login')
@@ -540,7 +638,6 @@ function changeCartQuantity(productId: string, quantity: number) {
             </div>
           )}
         </section>
-
         {isAdmin && (
           <section className="section wrap" id="admin-panel" style={{ borderTop: '2px solid #00a3ff', marginTop: 50, paddingBottom: 50 }}>
             <h2>Panel de administración</h2>
