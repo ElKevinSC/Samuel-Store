@@ -74,7 +74,22 @@ const [cart, setCart] = useState<
     if (error) setMessage(`No se pudo cargar el catálogo: ${error.message}`)
     if (data) setProducts(data as Product[])
   }
+  async function refreshBanks() {
+    if (!supabase) return
 
+    const { data, error } = await supabase
+      .from('bank_accounts')
+      .select('id,bank_name,account_number,account_holder,active')
+      .eq('active', true)
+
+    if (error) {
+      console.error('Error al cargar cuentas:', error.message)
+      setMessage(`Error al cargar cuentas bancarias: ${error.message}`)
+      return
+    }
+
+    setBanks((data ?? []) as Bank[])
+  }
   async function fetchMyOrders(uid: string) {
     if (!supabase) return
     const { data, error } = await supabase.from('orders').select('*, products(detail,game_name)').eq('user_id', uid).order('created_at', { ascending: false })
@@ -128,6 +143,7 @@ if (p.error || b.error || o.error) {
     if (!supabase) return
     let alive = true
     void refreshProducts()
+    void refreshBanks()
     supabase.auth.getSession().then(async ({ data }) => {
       if (!alive) return
       const current = data.session?.user ?? null
@@ -494,16 +510,27 @@ function changeCartQuantity(productId: string, quantity: number) {
                             <span className="price-caption">Precio</span>
                             <strong>{money(displayPrice)}</strong>
                           </div>
-                          <button className="button" onClick={() => {
-                            if (!user) {
-                              setModal('login')
-                              return
-                            }
-                            setProduct(p)
-                            setDepositAmount(String(displayPrice))
-                            setMessage('')
-                            setModal('checkout')
-                          }}>Comprar</button>
+                          <button
+  className="button"
+  onClick={() => {
+    if (!user) {
+      setModal('login')
+      return
+    }
+
+    if (
+      cart.length > 0 &&
+      cart[0].product.game_name !== p.game_name
+    ) {
+      setMessage('Solo puedes agregar paquetes del mismo juego al carrito.')
+      return
+    }
+
+    addToCart(p)
+  }}
+>
+  Agregar al carrito
+</button>
                         </div>
                       </div>
                     </article>
