@@ -28,12 +28,12 @@ function getGameLogo(game: string): string | undefined {
 type Product = { id: string; name: string; detail: string; game_name: string | null; category: Category; price: number; reseller_price: number; active: boolean }
 type Bank = { id: string; bank_name: string; account_number: string; account_holder: string; active: boolean }
 type Profile = { id: string; full_name: string; role: string; application_status: string }
-type Order = { id: string; user_id: string; product_id: string | null; player_id: string; amount: number; reference_nc: string; deposit_date: string | null; receipt_path: string | null; status: string; created_at: string; products?: { detail?: string; game_name?: string } | null; profiles?: { full_name?: string } | null; receipt_signed_url?: string | null }
+type Order = { id: string; user_id: string; product_id: string | null; player_id: string; amount: number; reference_nc: string; deposit_date: string | null; receipt_path: string | null; status: string; created_at: string; products?: { detail?: string; game_name?: string } | null; order_items?: { game_name: string; product_name: string; quantity: number; unit_price: number; line_total: number }[] | null; profiles?: { full_name?: string } | null; receipt_signed_url?: string | null }
 
 function Home() {
   const [selectedGame, setSelectedGame] = useState<string | null>(null)
   const [menu, setMenu] = useState(false)
-  const [modal, setModal] = useState<'login' | 'register' | 'reseller_apply' | 'checkout' | 'my_orders' | null>(null)
+  const [modal, setModal] = useState<'login' | 'register' | 'reseller_apply' | 'checkout'| 'my_orders' | 'terms' | 'order_done' | null>(null)
   const [user, setUser] = useState<User | null>(null)
   const [isAdmin, setIsAdmin] = useState(false)
   const [isReseller, setIsReseller] = useState(false)
@@ -60,6 +60,8 @@ const [cart, setCart] = useState<
   const [depositAmount, setDepositAmount] = useState('')
   const [depositDate, setDepositDate] = useState('')
   const [receipt, setReceipt] = useState<File | null>(null)
+  const [acceptTerms, setAcceptTerms] = useState(false)
+const [waLink, setWaLink] = useState('')
   const [gameName, setGameName] = useState('')
   const [packageName, setPackageName] = useState('')
   const [price, setPrice] = useState('')
@@ -92,7 +94,7 @@ const [cart, setCart] = useState<
   }
   async function fetchMyOrders(uid: string) {
     if (!supabase) return
-    const { data, error } = await supabase.from('orders').select('*, products(detail,game_name)').eq('user_id', uid).order('created_at', { ascending: false })
+    const { data, error } = await supabase.from('orders') .select('*, products(detail,game_name), order_items(game_name,product_name,quantity,unit_price,line_total)').eq('user_id', uid), uid).order('created_at', { ascending: false })
     if (!error && data) setMyOrders(data as Order[])
   }
 
@@ -100,8 +102,9 @@ const [cart, setCart] = useState<
     if (!supabase) return
     const [p, b, o] = await Promise.all([
       supabase.from('profiles').select('id,full_name,role,application_status'),
-      supabase.from('bank_accounts').select('id,bank_name,account_number,account_holder,active').eq('active', true),
-      supabase.from('orders').select('*, products(detail,game_name), profiles(full_name)').order('created_at', { ascending: false })
+      supabase.from('bank_accounts').select('id,bank_name,account_number,account_holder,active')
+        .eq('active', true),
+      supabase.from('orders').select('*, products(detail,game_name), order_items(game_name,product_name,quantity,unit_price,line_total), profiles(full_name)')'i.order('created_at', { ascending: false })
     ])
     if (p.data) setProfiles(p.data as Profile[])
     if (b.data) setBanks(b.data as Bank[])
@@ -262,6 +265,10 @@ function changeCartQuantity(productId: string, quantity: number) {
       setMessage('Completa todos los campos y adjunta el comprobante.')
       return
     }
+    if (!acceptTerms) {
+  setMessage('Debes aceptar los términos y condiciones.')
+  return
+    }  
     if (receipt.size > 5 * 1024 * 1024) {
       setMessage('El comprobante debe pesar máximo 5 MB.')
       return
@@ -283,7 +290,7 @@ function changeCartQuantity(productId: string, quantity: number) {
       setMessage(`Error al subir boleta: ${uploadError.message}`)
       return
     }
-    const { error } = await supabase.rpc('create_order', {
+    const { data: orderId, error } = await supabase.rpc('create_order', {
       p_player_id: playerId.trim(),
       p_reference_nc: reference.trim(),
       p_deposit_date: depositDate,
@@ -299,7 +306,12 @@ function changeCartQuantity(productId: string, quantity: number) {
     }
     setLoading(false)
     setModal(null)
-    setMessage('Pedido enviado correctamente.')
+    const lines = cart.map(item => `• ${item.quantity} x ${item.product.detail || item.product.name}`).join('\n')
+const text = `Hola Samuel Store, acabo de hacer un pedido.\n\nPedido: ${String(orderId ?? '').slice(0, 8)}\nJuego: ${cart[0].product.game_name || 'Otros'}\nID de jugador: ${playerId.trim()}\n\nPaquetes:\n${lines}\n\nTotal: ${money(Number(depositAmount))}\nReferencia NC: ${reference.trim()}\n\nYa envié mi comprobante en la tienda.`
+setWaLink(`https://wa.me/50254560623?text=${encodeURIComponent(text)}`)
+setAcceptTerms(false)
+setMessage('')
+setModal('order_done')
     await fetchMyOrders(user.id)
     setCart([])
     setPlayerId('')
@@ -658,8 +670,15 @@ function changeCartQuantity(productId: string, quantity: number) {
               <div style={{ maxHeight: 400, overflowY: 'auto' }}>
                 {pendingOrders.map(o => (
                   <div key={o.id} className="admin-product-row" style={{ backgroundColor: '#222', padding: 10, margin: '5px 0', flexDirection: 'column', alignItems: 'flex-start' }}>
-                    <p><strong>Cliente:</strong> {o.profiles?.full_name || o.user_id} | <strong>Juego:</strong> {o.products?.game_name || '—'} - {o.products?.detail || '—'}</p>
-                    <p><strong>ID jugador:</strong> {o.player_id} | <strong>Monto:</strong> Q{o.amount} | <strong>NC:</strong> {o.reference_nc}</p>
+                    <p><strong>Cliente:</strong> {o.profiles?.full_name || o.user_id}</p>
+<p><strong>Juego:</strong> {o.order_items?.[0]?.game_name || o.products?.game_name || '—'}</p>
+<div style={{ background: '#111', padding: 8, borderRadius: 6, width: '100%' }}>
+  <strong>Recargar:</strong>
+  {(o.order_items ?? []).map((it, i) => (
+    <p key={i}>{it.quantity} × {it.product_name}</p>
+  ))}
+  {(!o.order_items || o.order_items.length === 0) && <p>{o.products?.detail || '—'}</p>}
+</div>
                     <p><strong>Fecha depósito:</strong> {o.deposit_date || '—'}</p>
                     {o.receipt_signed_url ? (
                       <a href={o.receipt_signed_url} target="_blank" rel="noreferrer" style={{ color: '#00a3ff', textDecoration: 'underline' }}>Ver comprobante</a>
@@ -697,7 +716,35 @@ function changeCartQuantity(productId: string, quantity: number) {
           </section>
         )}
       </main>
-
+<footer className="wrap" style={{ borderTop: '1px solid #1b2a3a', marginTop: 40, padding: '28px 0 90px', textAlign: 'center' }}>
+  <h3>Síguenos en @SamuelStoreGt</h3>
+  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10, justifyContent: 'center', margin: '14px 0' }}>
+    <a className="button small" href="https://www.facebook.com/SamuelStoreGt" target="_blank" rel="noreferrer">Facebook</a>
+    <a className="button small" href="https://www.instagram.com/SamuelStoreGt" target="_blank" rel="noreferrer">Instagram</a>
+    <a className="button small" href="https://www.tiktok.com/@SamuelStoreGt" target="_blank" rel="noreferrer">TikTok</a>
+    <a className="button small" href="https://wa.me/50254560623" target="_blank" rel="noreferrer">WhatsApp</a>
+  </div>
+  <p>
+    <button onClick={() => { setMessage(''); setModal('terms') }} style={{ textDecoration: 'underline' }}>
+      Términos y condiciones
+    </button>
+  </p>
+  <p style={{ fontSize: 12, opacity: 0.7, marginTop: 10 }}>
+    © 2026 Samuel Store. Todos los derechos reservados. Guatemala.
+  </p>
+  <p style={{ fontSize: 11, opacity: 0.6, marginTop: 6 }}>
+    Free Fire, Blood Strike y Roblox son marcas de sus respectivos dueños. Samuel Store no está afiliada a ellos.
+  </p>
+</footer>
+<a
+  href="https://wa.me/50254560623"
+  target="_blank"
+  rel="noreferrer"
+  aria-label="Escríbenos por WhatsApp"
+  style={{ position: 'fixed', right: 16, bottom: 16, zIndex: 50, background: '#25d366', color: '#fff', fontWeight: 700, padding: '12px 18px', borderRadius: 999, boxShadow: '0 4px 14px rgba(0,0,0,.4)' }}
+>
+  WhatsApp
+</a>
       <Dialog open={!!modal} onOpenChange={open => { if (!open) { setModal(null); setMessage('') } }}>
         <DialogContent className="store-dialog">
           {(modal === 'login' || modal === 'register') && (
@@ -725,14 +772,44 @@ function changeCartQuantity(productId: string, quantity: number) {
               </div>
             </>
           )}
-
+{modal === 'terms' && (
+  <>
+    <DialogHeader><DialogTitle>Términos y condiciones</DialogTitle></DialogHeader>
+    <div style={{ maxHeight: 360, overflowY: 'auto', fontSize: 14, lineHeight: 1.5 }}>
+      <p><strong>1. Quiénes somos.</strong><br />Samuel Store es una tienda digital de Guatemala que vende recargas y paquetes para videojuegos.</p>
+      <p><strong>2. Pedidos y pago.</strong><br />El pago se hace por depósito bancario a las cuentas que aparecen al finalizar el pedido. Debes depositar el monto exacto y adjuntar tu comprobante. Tu pedido queda "En revisión" hasta que verifiquemos el pago.</p>
+      <p><strong>3. Entrega.</strong><br />Las recargas se realizan manualmente después de confirmar el pago. El tiempo puede variar según la cantidad de pedidos. Si tienes dudas, escríbenos por WhatsApp.</p>
+      <p><strong>4. ID de jugador.</strong><br />Eres responsable de escribir correctamente tu ID de jugador. Si la recarga se hace a un ID equivocado por un error del cliente, no se puede reembolsar.</p>
+      <p><strong>5. Devoluciones.</strong><br />Por ser productos digitales, una vez realizada la recarga no hay devoluciones. Si no podemos verificar tu pago o no podemos entregar tu pedido, lo corregiremos o te devolveremos tu dinero.</p>
+      <p><strong>6. Revendedores.</strong><br />Debes ser mayor de 18 años y ser aprobado por Samuel Store. Para mantenerte en el programa debes completar un mínimo de Q200 en pedidos cada mes. Si no se cumple, podemos retirarte del programa y volverás a precios de cliente.</p>
+      <p><strong>7. Precios.</strong><br />Los precios pueden cambiar sin previo aviso. Se aplica el precio vigente al momento de hacer el pedido.</p>
+      <p><strong>8. Uso correcto.</strong><br />Debes dar datos verdaderos. Si se envía un comprobante falso o alterado, el pedido se cancela y la cuenta puede ser bloqueada.</p>
+      <p><strong>9. Marcas.</strong><br />Free Fire, Blood Strike, Roblox y otros nombres y logos pertenecen a sus respectivos dueños. Samuel Store no está afiliada, patrocinada ni respaldada por ellos.</p>
+      <p><strong>10. Privacidad.</strong><br />Guardamos tu nombre, correo, ID de jugador y comprobantes solo para procesar tus pedidos. No vendemos tus datos a terceros.</p>
+      <p><strong>11. Derechos de autor.</strong><br />El nombre, logo, diseño y contenido de esta tienda son propiedad de Samuel Store. Está prohibido copiarlos sin autorización.</p>
+      <p><strong>12. Cambios y contacto.</strong><br />Podemos actualizar estos términos. Para cualquier consulta escríbenos por WhatsApp al +502 5456 0623 o en @SamuelStoreGt.</p>
+      <p style={{ fontSize: 12, opacity: 0.7 }}>Última actualización: octubre de 2026.</p>
+      {cart.length > 0 && <button className="button small" onClick={() => setModal('checkout')}>Volver al pago</button>}
+    </div>
+  </>
+)}
+          {modal === 'order_done' && (
+  <>
+    <DialogHeader><DialogTitle>¡Pedido enviado!</DialogTitle><DialogDescription>Recibimos tu comprobante. Para que sea más rápido, envíanos el detalle por WhatsApp.</DialogDescription></DialogHeader>
+    <div className="auth-form">
+      <a className="button" href={waLink} target="_blank" rel="noreferrer">Enviar pedido por WhatsApp</a>
+      <button className="button secondary small" onClick={() => setModal('my_orders')}>Ver mis pedidos</button>
+    </div>
+  </>
+)}
           {modal === 'my_orders' && (
             <>
               <DialogHeader><DialogTitle>Mis pedidos</DialogTitle></DialogHeader>
               <div style={{ maxHeight: 300, overflowY: 'auto' }}>
                 {myOrders.map(o => (
                   <div key={o.id} style={{ borderBottom: '1px solid #333', padding: '10px 0' }}>
-                    <p><strong>{o.products?.game_name || 'Producto'} — {o.products?.detail || 'Paquete'}</strong></p>
+                    <p><strong>{o.order_items?.[0]?.game_name || o.products?.game_name || 'Pedido'}</strong></p>
+{(o.order_items ?? []).map((it, i) => (<p key={i}>{it.quantity} × {it.product_name}</p>))}
                     <p>Monto: Q{o.amount} | ID jugador: {o.player_id}</p>
                     <p>Estado: <strong style={{ color: o.status === 'completed' ? 'green' : o.status === 'rejected' ? 'red' : 'orange' }}>
                       {o.status === 'completed' ? 'Completado' : o.status === 'rejected' ? 'Rechazado' : o.status === 'payment_confirmed' ? 'Pago confirmado' : o.status === 'processing' ? 'En proceso' : 'En revisión'}
@@ -780,6 +857,10 @@ function changeCartQuantity(productId: string, quantity: number) {
                   <Upload size={20} />{receipt ? receipt.name : 'Seleccionar comprobante'}
                   <input type="file" accept="image/jpeg,image/png,image/webp,application/pdf" onChange={e => setReceipt(e.target.files?.[0] ?? null)} />
                 </label>
+                <label style={{ display: 'flex', gap: 8, alignItems: 'flex-start', fontSize: 13 }}>
+  <input type="checkbox" checked={acceptTerms} onChange={e => setAcceptTerms(e.target.checked)} style={{ width: 'auto', marginTop: 3 }} />
+  <span>Acepto los <button type="button" onClick={() => setModal('terms')} style={{ textDecoration: 'underline' }}>términos y condiciones</button></span>
+</label>
                 <button className="button" disabled={loading} onClick={() => { void submitOrder() }}>{loading ? 'Enviando...' : 'Confirmar pedido'}</button>
                 {message && <p role="status" style={{ color: '#00a3ff' }}>{message}</p>}
               </div>
