@@ -94,7 +94,7 @@ const [waLink, setWaLink] = useState('')
   }
   async function fetchMyOrders(uid: string) {
     if (!supabase) return
-    const { data, error } = await supabase.from('orders') .select('*, products(detail,game_name), order_items(game_name,product_name,quantity,unit_price,line_total)').eq('user_id', uid), uid).order('created_at', { ascending: false })
+const { data, error } = await supabase.from('orders').select('*, products(detail,game_name), order_items(game_name,product_name,quantity,unit_price,line_total)').eq('user_id', uid).order('created_at', { ascending: false })
     if (!error && data) setMyOrders(data as Order[])
   }
 
@@ -104,7 +104,7 @@ const [waLink, setWaLink] = useState('')
       supabase.from('profiles').select('id,full_name,role,application_status'),
       supabase.from('bank_accounts').select('id,bank_name,account_number,account_holder,active')
         .eq('active', true),
-      supabase.from('orders').select('*, products(detail,game_name), order_items(game_name,product_name,quantity,unit_price,line_total), profiles(full_name)')'i.order('created_at', { ascending: false })
+supabase.from('orders').select('*, products(detail,game_name), order_items(game_name,product_name,quantity,unit_price,line_total), profiles(full_name)').order('created_at', { ascending: false })
     ])
     if (p.data) setProfiles(p.data as Profile[])
     if (b.data) setBanks(b.data as Bank[])
