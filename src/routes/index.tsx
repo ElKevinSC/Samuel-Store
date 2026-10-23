@@ -805,12 +805,14 @@ setModal('order_done')
           {modal === 'my_orders' && (
             <>
               <DialogHeader><DialogTitle>Mis pedidos</DialogTitle></DialogHeader>
-              <div style={{ maxHeight: 300, overflowY: 'auto' }}>
+              <div style={{ maxHeight: '60dvh', overflowY: 'auto' }}>
                 {myOrders.map(o => (
                   <div key={o.id} style={{ borderBottom: '1px solid #333', padding: '10px 0' }}>
                     <p><strong>{o.order_items?.[0]?.game_name || o.products?.game_name || 'Pedido'}</strong></p>
-{(o.order_items ?? []).map((it, i) => (<p key={i}>{it.quantity} × {it.product_name}</p>))}
-                    <p>Monto: Q{o.amount} | ID jugador: {o.player_id}</p>
+{(o.order_items ?? []).map((it, i) => (<p key={i}>{it.quantity} × {it.product_name} — {money(Number(it.line_total))}</p>))}
+{(!o.order_items || o.order_items.length === 0) && <p>{o.products?.detail || '—'}</p>}
+                    <p>ID jugador: <strong>{o.player_id}</strong></p>
+<p>Total: <strong>{money(Number(o.amount))}</strong> | {new Date(o.created_at).toLocaleDateString()}</p>
                     <p>Estado: <strong style={{ color: o.status === 'completed' ? 'green' : o.status === 'rejected' ? 'red' : 'orange' }}>
                       {o.status === 'completed' ? 'Completado' : o.status === 'rejected' ? 'Rechazado' : o.status === 'payment_confirmed' ? 'Pago confirmado' : o.status === 'processing' ? 'En proceso' : 'En revisión'}
                     </strong></p>
