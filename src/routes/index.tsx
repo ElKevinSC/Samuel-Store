@@ -253,9 +253,9 @@ function changeCartQuantity(productId: string, quantity: number) {
   )
 }
 
-  async function submitOrder() {
-    if (!supabase || !user || !product) {
-      setMessage('Inicia sesión y selecciona un producto.')
+    async function submitOrder() {
+    if (!supabase || !user || cart.length === 0) {
+      setMessage('Inicia sesión y agrega paquetes al carrito.')
       return
     }
     if (!playerId.trim() || !reference.trim() || !depositDate || !receipt || Number(depositAmount) <= 0) {
@@ -283,33 +283,31 @@ function changeCartQuantity(productId: string, quantity: number) {
       setMessage(`Error al subir boleta: ${uploadError.message}`)
       return
     }
-    const { error } = await supabase.from('orders').insert({
-      user_id: user.id,
-      product_id: product.id,
-      player_id: playerId.trim(),
-      amount: Number(depositAmount),
-      reference_nc: reference.trim(),
-      deposit_date: depositDate,
-      receipt_path: path,
-      status: 'pending'
+    const { error } = await supabase.rpc('create_order', {
+      p_player_id: playerId.trim(),
+      p_reference_nc: reference.trim(),
+      p_deposit_date: depositDate,
+      p_receipt_path: path,
+      p_amount: Number(depositAmount),
+      p_items: cart.map(item => ({ product_id: item.product.id, quantity: item.quantity }))
     })
     if (error) {
       await supabase.storage.from('boletas').remove([path])
       setLoading(false)
-      setMessage(`Error al guardar pedido: ${error.message}. Verifica que orders tenga product_id y su relación con products.`)
+      setMessage(`No se pudo guardar el pedido: ${error.message}`)
       return
     }
     setLoading(false)
     setModal(null)
     setMessage('Pedido enviado correctamente.')
     await fetchMyOrders(user.id)
+    setCart([])
     setPlayerId('')
     setReference('')
     setDepositAmount('')
     setDepositDate('')
     setReceipt(null)
-  }
-
+    }
   async function updateOrder(id: string, status: 'completed' | 'rejected') {
     if (!supabase || !isAdmin) return
     const { error } = await supabase.from('orders').update({ status }).eq('id', id)
@@ -751,7 +749,17 @@ function changeCartQuantity(productId: string, quantity: number) {
             <>
               <DialogHeader><DialogTitle>Completar pedido</DialogTitle><DialogDescription>Deposita el monto y adjunta tu comprobante.</DialogDescription></DialogHeader>
               <div className="auth-form">
-                <p>Producto: <strong>{product.detail || product.name}</strong> — <strong>{money(Number(isReseller ? product.reseller_price : product.price))}</strong></p>
+                <div style={{ background: '#222', padding: 10, borderRadius: 8 }}>
+  {cart.map(item => {
+    const unit = Number(isReseller ? item.product.reseller_price : item.product.price)
+    return (
+      <p key={item.product.id}>
+        {item.quantity} × <strong>{item.product.detail || item.product.name}</strong> — {money(unit * item.quantity)}
+      </p>
+    )
+  })}
+  <p><strong>Total a depositar: {money(cart.reduce((t, item) => t + Number(isReseller ? item.product.reseller_price : item.product.price) * item.quantity, 0))}</strong></p>
+</div>
                 <label>ID de jugador<input value={playerId} onChange={e => setPlayerId(e.target.value)} placeholder="Ej. 12345678" /></label>
                 <div style={{ backgroundColor: '#003366', padding: 15, borderRadius: 8, margin: '10px 0' }}>
                   <h4 style={{ margin: '0 0 10px' }}>Datos para depositar</h4>
@@ -766,7 +774,7 @@ function changeCartQuantity(productId: string, quantity: number) {
                   <p style={{ fontSize: 11, color: '#ffcc00' }}>Deposita el monto exacto y sube el comprobante.</p>
                 </div>
                 <label>Referencia NC<input value={reference} onChange={e => setReference(e.target.value)} /></label>
-                <label>Monto depositado (Q)<input type="number" min="0.01" step="0.01" value={depositAmount} onChange={e => setDepositAmount(e.target.value)} /></label>
+                <label>Monto depositado (Q)<input type="number" value={depositAmount} readOnly /></label>
                 <label>Fecha del depósito<input type="date" value={depositDate} onChange={e => setDepositDate(e.target.value)} /></label>
                 <label style={{ display: 'flex', alignItems: 'center', gap: 10, background: '#222', padding: 10, borderRadius: 5 }}>
                   <Upload size={20} />{receipt ? receipt.name : 'Seleccionar comprobante'}
