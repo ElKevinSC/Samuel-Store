@@ -1,7 +1,7 @@
 import { createFileRoute } from '@tanstack/react-router'
 import { useEffect, useMemo, useState } from 'react'
 import { createClient, type User } from '@supabase/supabase-js'
-import { ArrowRight, ArrowLeft, Gamepad2, Menu, X, Upload, RefreshCw, LogOut } from 'lucide-react'
+import { ArrowRight, ArrowLeft, Gamepad2, Menu, X, Upload, RefreshCw, LogOut, ShoppingCart } from 'lucide-react'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog'
 import { ControllerArt } from '@/components/store/controller-art'
 import { money, type Category } from '@/data/catalog'
@@ -637,7 +637,7 @@ setModal('order_done')
     addToCart(p)
   }}
 >
-  Agregar al carrito
+  <ShoppingCart size={18} aria-label="Agregar al carrito" />
 </button>
                         </div>
                       </div>
@@ -746,7 +746,7 @@ setModal('order_done')
   WhatsApp
 </a>
       <Dialog open={!!modal} onOpenChange={open => { if (!open) { setModal(null); setMessage('') } }}>
-        <DialogContent className="store-dialog">
+        <DialogContent className="store-dialog" style={{ maxHeight: '92dvh', overflowY: 'auto', overscrollBehavior: 'contain' }}>
           {(modal === 'login' || modal === 'register') && (
             <>
               <DialogHeader><DialogTitle>{modal === 'login' ? 'Iniciar sesión' : 'Registrarse'}</DialogTitle></DialogHeader>
@@ -855,14 +855,16 @@ setModal('order_done')
                 <label>Fecha del depósito<input type="date" value={depositDate} onChange={e => setDepositDate(e.target.value)} /></label>
                 <label style={{ display: 'flex', alignItems: 'center', gap: 10, background: '#222', padding: 10, borderRadius: 5 }}>
                   <Upload size={20} />{receipt ? receipt.name : 'Seleccionar comprobante'}
-                  <input type="file" accept="image/jpeg,image/png,image/webp,application/pdf" onChange={e => setReceipt(e.target.files?.[0] ?? null)} />
+                  <input type="file" style={{ display: 'none' }} accept="image/jpeg,image/png,image/webp,application/pdf" onChange={e => setReceipt(e.target.files?.[0] ?? null)} />
                 </label>
-                <label style={{ display: 'flex', gap: 8, alignItems: 'flex-start', fontSize: 13 }}>
-  <input type="checkbox" checked={acceptTerms} onChange={e => setAcceptTerms(e.target.checked)} style={{ width: 'auto', marginTop: 3 }} />
+                <label style={{ display: 'flex', flexDirection: 'row', gap: 10, alignItems: 'center', fontSize: 14 }}>
+  <input type="checkbox" checked={acceptTerms} onChange={e => setAcceptTerms(e.target.checked)} style={{ width: 22, height: 22, minWidth: 22, margin: 0, padding: 0, flex: '0 0 22px' }} />
   <span>Acepto los <button type="button" onClick={() => setModal('terms')} style={{ textDecoration: 'underline' }}>términos y condiciones</button></span>
 </label>
-                <button className="button" disabled={loading} onClick={() => { void submitOrder() }}>{loading ? 'Enviando...' : 'Confirmar pedido'}</button>
-                {message && <p role="status" style={{ color: '#00a3ff' }}>{message}</p>}
+                <div style={{ position: 'sticky', bottom: 0, background: '#0b1320', padding: '10px 0', zIndex: 5 }}>
+  {message && <p role="status" style={{ color: '#00a3ff', marginBottom: 8 }}>{message}</p>}
+  <button className="button" style={{ width: '100%' }} disabled={loading} onClick={() => { void submitOrder() }}>{loading ? 'Enviando...' : 'Confirmar pedido'}</button>
+</div>
               </div>
             </>
           )}
