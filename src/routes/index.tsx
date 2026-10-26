@@ -33,7 +33,7 @@ type Order = { id: string; user_id: string; product_id: string | null; player_id
 function Home() {
   const [selectedGame, setSelectedGame] = useState<string | null>(null)
   const [menu, setMenu] = useState(false)
-  const [modal, setModal] = useState<'login' | 'register' | 'reseller_apply' | 'checkout'| 'my_orders' | 'terms' | 'order_done' | null>(null)
+  const [modal, setModal] = useState<'login' | 'register' | 'reseller_apply' | 'checkout'| 'my_orders' | 'terms' | 'order_done' | 'legal' | 'privacy' | 'user_orders' | null>(null)
   const [user, setUser] = useState<User | null>(null)
   const [isAdmin, setIsAdmin] = useState(false)
   const [isReseller, setIsReseller] = useState(false)
@@ -62,6 +62,12 @@ const [cart, setCart] = useState<
   const [receipt, setReceipt] = useState<File | null>(null)
   const [acceptTerms, setAcceptTerms] = useState(false)
 const [waLink, setWaLink] = useState('')
+  const [toast, setToast] = useState('')
+  const [cookieOk, setCookieOk] = useState(true)
+  const [historyUser, setHistoryUser] = useState<string | null>(null)
+  useEffect(() => {
+    try { if (!localStorage.getItem('cookies_ok')) setCookieOk(false) } catch { /* nada */ }
+  }, [])
   const [gameName, setGameName] = useState('')
   const [packageName, setPackageName] = useState('')
   const [price, setPrice] = useState('')
@@ -221,6 +227,11 @@ if (p.error || b.error || o.error) {
     }
   }
 
+function showToast(text: string) {
+  setToast(text)
+  window.setTimeout(() => setToast(''), 2500)
+}
+
 function addToCart(p: Product) {
   setCart(current => {
     const found = current.find(item => item.product.id === p.id)
@@ -236,7 +247,7 @@ function addToCart(p: Product) {
     return [...current, { product: p, quantity: 1 }]
   })
 
-  setMessage(`${p.detail || p.name} agregado al carrito.`)
+  showToast(`${p.detail || p.name} agregado al carrito`)
 }
 
 function changeCartQuantity(productId: string, quantity: number) {
@@ -321,6 +332,7 @@ setModal('order_done')
     setReceipt(null)
     }
   async function updateOrder(id: string, status: 'completed' | 'rejected') {
+    if (!window.confirm(status === 'completed' ? '¿Aprobar y completar este pedido?' : '¿Rechazar este pedido?')) return
     if (!supabase || !isAdmin) return
     const { error } = await supabase.from('orders').update({ status }).eq('id', id)
     if (error) setMessage(`No se pudo actualizar el pedido: ${error.message}`)
@@ -391,6 +403,19 @@ setModal('order_done')
   const gameProducts = useMemo(() => products.filter(p => (p.game_name || 'Otros') === selectedGame), [products, selectedGame])
   const pendingResellers = profiles.filter(p => p.application_status === 'pending')
   const pendingOrders = orders.filter(o => o.status === 'pending')
+  const cartTotal = cart.reduce((t, item) => t + Number(isReseller ? item.product.reseller_price : item.product.price) * item.quantity, 0)
+  useEffect(() => { setDepositAmount(String(cartTotal)) }, [cartTotal])
+  const usersWithOrders = useMemo(() => {
+    const map = new Map<string, { id: string; name: string; count: number; total: number }>()
+    for (const o of orders) {
+      const cur = map.get(o.user_id) ?? { id: o.user_id, name: o.profiles?.full_name || 'Sin nombre', count: 0, total: 0 }
+      cur.count += 1
+      if (o.status === 'completed') cur.total += Number(o.amount)
+      map.set(o.user_id, cur)
+    }
+    return Array.from(map.values()).sort((a, b) => b.total - a.total)
+  }, [orders])
+  const historyOrders = orders.filter(o => o.user_id === historyUser)
 
   if (!supabase) {
     return (
@@ -630,7 +655,7 @@ setModal('order_done')
       cart.length > 0 &&
       cart[0].product.game_name !== p.game_name
     ) {
-      setMessage('Solo puedes agregar paquetes del mismo juego al carrito.')
+      showToast('Solo puedes agregar paquetes del mismo juego al carrito.')
       return
     }
 
@@ -675,10 +700,11 @@ setModal('order_done')
 <div style={{ background: '#111', padding: 8, borderRadius: 6, width: '100%' }}>
   <strong>Recargar:</strong>
   {(o.order_items ?? []).map((it, i) => (
-    <p key={i}>{it.quantity} × {it.product_name}</p>
+    <p key={i}>{it.quantity} × {it.product_name} — {money(Number(it.line_total))}</p>
   ))}
   {(!o.order_items || o.order_items.length === 0) && <p>{o.products?.detail || '—'}</p>}
 </div>
+                    <p><strong>ID jugador:</strong> {o.player_id} | <strong>Monto:</strong> {money(Number(o.amount))} | <strong>NC:</strong> {o.reference_nc}</p>
                     <p><strong>Fecha depósito:</strong> {o.deposit_date || '—'}</p>
                     {o.receipt_signed_url ? (
                       <a href={o.receipt_signed_url} target="_blank" rel="noreferrer" style={{ color: '#00a3ff', textDecoration: 'underline' }}>Ver comprobante</a>
@@ -712,6 +738,19 @@ setModal('order_done')
               <button className="button" disabled={loading} onClick={() => { void saveBank() }}>Guardar cuenta</button>
               <ul>{banks.map(b => <li key={b.id}>{b.bank_name} — {b.account_number} ({b.account_holder})</li>)}</ul>
             </div>
+            <div className="admin-form" style={{ marginTop: 20 }}>
+              <h3>Pedidos por usuario</h3>
+              {usersWithOrders.map(u => (
+                <div key={u.id} style={{ backgroundColor: '#222', padding: 10, margin: '5px 0', borderRadius: 8, display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10 }}>
+                  <div>
+                    <strong>{u.name}</strong>
+                    <p style={{ fontSize: 13 }}>{u.count} pedidos | Completado: {money(u.total)}</p>
+                  </div>
+                  <button className="button small" onClick={() => { setHistoryUser(u.id); setModal('user_orders') }}>Ver</button>
+                </div>
+              ))}
+              {usersWithOrders.length === 0 && <p>Aún no hay pedidos.</p>}
+            </div>
             {message && <p role="status" style={{ color: '#00a3ff', marginTop: 12 }}>{message}</p>}
           </section>
         )}
@@ -724,10 +763,10 @@ setModal('order_done')
     <a className="button small" href="https://www.tiktok.com/@SamuelStoreGt" target="_blank" rel="noreferrer">TikTok</a>
     <a className="button small" href="https://wa.me/50254560623" target="_blank" rel="noreferrer">WhatsApp</a>
   </div>
-  <p>
-    <button onClick={() => { setMessage(''); setModal('terms') }} style={{ textDecoration: 'underline' }}>
-      Términos y condiciones
-    </button>
+  <p style={{ display: 'flex', flexWrap: 'wrap', gap: 14, justifyContent: 'center' }}>
+    <button onClick={() => { setMessage(''); setModal('legal') }} style={{ textDecoration: 'underline' }}>Aviso legal</button>
+    <button onClick={() => { setMessage(''); setModal('privacy') }} style={{ textDecoration: 'underline' }}>Política de privacidad</button>
+    <button onClick={() => { setMessage(''); setModal('terms') }} style={{ textDecoration: 'underline' }}>Términos y condiciones</button>
   </p>
   <p style={{ fontSize: 12, opacity: 0.7, marginTop: 10 }}>
     © 2026 Samuel Store. Todos los derechos reservados. Guatemala.
@@ -745,6 +784,35 @@ setModal('order_done')
 >
   WhatsApp
 </a>
+      {toast && (
+        <div role="status" style={{ position: 'fixed', left: 16, right: 16, bottom: 140, zIndex: 60, background: '#0b1320', border: '1px solid #00a3ff', color: '#fff', padding: '12px 16px', borderRadius: 12, textAlign: 'center' }}>
+          {toast}
+        </div>
+      )}
+      {cart.length > 0 && (
+        <button
+          aria-label="Ver carrito"
+          onClick={() => {
+            if (!user) { setModal('login'); return }
+            setProduct(cart[0].product)
+            setPlayerId('')
+            setMessage('')
+            setModal('checkout')
+          }}
+          style={{ position: 'fixed', right: 16, bottom: 76, zIndex: 50, background: '#00a3ff', color: '#fff', width: 56, height: 56, borderRadius: 999, display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: '0 4px 14px rgba(0,0,0,.4)' }}
+        >
+          <ShoppingCart size={24} />
+          <span style={{ position: 'absolute', top: -4, right: -4, background: '#f06675', color: '#fff', fontSize: 12, fontWeight: 700, minWidth: 22, height: 22, borderRadius: 999, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+            {cart.reduce((t, item) => t + item.quantity, 0)}
+          </span>
+        </button>
+      )}
+      {!cookieOk && (
+        <div style={{ position: 'fixed', left: 0, right: 0, bottom: 0, zIndex: 70, background: '#0b1320', borderTop: '1px solid #00a3ff', padding: 14, display: 'flex', flexDirection: 'column', gap: 10 }}>
+          <p style={{ fontSize: 13 }}>Usamos el almacenamiento del navegador solo para mantener tu sesión. No usamos cookies de publicidad. Más información en la <button type="button" onClick={() => setModal('privacy')} style={{ textDecoration: 'underline' }}>política de privacidad</button>.</p>
+          <button className="button small" onClick={() => { try { localStorage.setItem('cookies_ok', '1') } catch { /* nada */ } setCookieOk(true) }}>Entendido</button>
+        </div>
+      )}
       <Dialog open={!!modal} onOpenChange={open => { if (!open) { setModal(null); setMessage('') } }}>
         <DialogContent className="store-dialog" style={{ maxHeight: '92dvh', overflowY: 'auto', overscrollBehavior: 'contain' }}>
           {(modal === 'login' || modal === 'register') && (
@@ -789,10 +857,63 @@ setModal('order_done')
       <p><strong>11. Derechos de autor.</strong><br />El nombre, logo, diseño y contenido de esta tienda son propiedad de Samuel Store. Está prohibido copiarlos sin autorización.</p>
       <p><strong>12. Cambios y contacto.</strong><br />Podemos actualizar estos términos. Para cualquier consulta escríbenos por WhatsApp al +502 5456 0623 o en @SamuelStoreGt.</p>
       <p style={{ fontSize: 12, opacity: 0.7 }}>Última actualización: octubre de 2026.</p>
-      {cart.length > 0 && <button className="button small" onClick={() => setModal('checkout')}>Volver al pago</button>}
+      {cart.length > 0 && <button className="button small" onClick={() => { setProduct(cart[0].product); setModal('checkout') }}>Volver al pago</button>}
     </div>
   </>
 )}
+          {modal === 'legal' && (
+            <>
+              <DialogHeader><DialogTitle>Aviso legal</DialogTitle></DialogHeader>
+              <div style={{ maxHeight: '60dvh', overflowY: 'auto', fontSize: 14, lineHeight: 1.5 }}>
+                <p><strong>Titular.</strong><br />Samuel Store, tienda digital de Guatemala, a cargo de Kevin Castillo.</p>
+                <p><strong>Contacto.</strong><br />WhatsApp +502 5456 0623 y redes sociales @SamuelStoreGt.</p>
+                <p><strong>Actividad.</strong><br />Venta de recargas y paquetes digitales para videojuegos.</p>
+                <p><strong>Propiedad.</strong><br />El nombre, logo y diseño de la tienda son de Samuel Store. Las marcas de los juegos pertenecen a sus dueños y Samuel Store no está afiliada a ellos.</p>
+                <p><strong>Uso de la tienda.</strong><br />Al usar esta tienda aceptas los Términos y condiciones y la Política de privacidad.</p>
+              </div>
+            </>
+          )}
+          {modal === 'privacy' && (
+            <>
+              <DialogHeader><DialogTitle>Política de privacidad</DialogTitle></DialogHeader>
+              <div style={{ maxHeight: '60dvh', overflowY: 'auto', fontSize: 14, lineHeight: 1.5 }}>
+                <p><strong>Datos que guardamos.</strong><br />Nombre, correo, ID de jugador, referencia, fecha y monto del depósito, comprobante y el historial de tus pedidos. Si solicitas ser revendedor, también tu edad y ventas estimadas. Tu contraseña la protege el servicio de acceso y nosotros no podemos verla.</p>
+                <p><strong>Para qué los usamos.</strong><br />Para verificar pagos, realizar tus recargas, darte soporte y administrar el programa de revendedores.</p>
+                <p><strong>Dónde se guardan.</strong><br />En Supabase, nuestro servicio de base de datos y almacenamiento. Los comprobantes se guardan en un almacenamiento privado.</p>
+                <p><strong>Con quién los compartimos.</strong><br />No vendemos ni compartimos tus datos con terceros, salvo que la ley lo exija. Solo usamos WhatsApp cuando tú nos envías el mensaje.</p>
+                <p><strong>Cookies y almacenamiento.</strong><br />Usamos el almacenamiento del navegador solo para mantener tu sesión iniciada. No usamos cookies de publicidad.</p>
+                <p><strong>Tus derechos.</strong><br />Puedes pedirnos por WhatsApp que te mostremos, corrijamos o borremos tus datos. Algunos registros de ventas pueden conservarse el tiempo necesario.</p>
+                <p style={{ fontSize: 12, opacity: 0.7 }}>Última actualización: octubre de 2026.</p>
+              </div>
+            </>
+          )}
+          {modal === 'user_orders' && (
+            <>
+              <DialogHeader>
+                <DialogTitle>{usersWithOrders.find(u => u.id === historyUser)?.name || 'Pedidos del usuario'}</DialogTitle>
+                <DialogDescription>Historial de pedidos</DialogDescription>
+              </DialogHeader>
+              <div style={{ maxHeight: '60dvh', overflowY: 'auto' }}>
+                {historyOrders.map(o => (
+                  <div key={o.id} style={{ borderBottom: '1px solid #333', padding: '12px 0' }}>
+                    <p><strong>{o.order_items?.[0]?.game_name || o.products?.game_name || 'Pedido'}</strong> — {new Date(o.created_at).toLocaleDateString()}</p>
+                    <p>ID jugador: <strong>{o.player_id}</strong></p>
+                    {(o.order_items ?? []).map((it, i) => (
+                      <p key={i}>{it.quantity} × {it.product_name} — {money(Number(it.line_total))}</p>
+                    ))}
+                    {(!o.order_items || o.order_items.length === 0) && <p>{o.products?.detail || '—'}</p>}
+                    <p>Total: <strong>{money(Number(o.amount))}</strong> | NC: {o.reference_nc}</p>
+                    <p>Estado: <strong style={{ color: o.status === 'completed' ? 'green' : o.status === 'rejected' ? 'red' : 'orange' }}>
+                      {o.status === 'completed' ? 'Completado' : o.status === 'rejected' ? 'Rechazado' : 'En revisión'}
+                    </strong></p>
+                    {o.receipt_signed_url && <a href={o.receipt_signed_url} target="_blank" rel="noreferrer" style={{ color: '#00a3ff', textDecoration: 'underline' }}>Ver comprobante</a>}
+                  </div>
+                ))}
+                {historyOrders.length === 0 && <p>Sin pedidos.</p>}
+              </div>
+              <button className="button secondary small" onClick={() => setModal(null)}>Cerrar</button>
+            </>
+          )}
           {modal === 'order_done' && (
   <>
     <DialogHeader><DialogTitle>¡Pedido enviado!</DialogTitle><DialogDescription>Recibimos tu comprobante. Para que sea más rápido, envíanos el detalle por WhatsApp.</DialogDescription></DialogHeader>
