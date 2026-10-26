@@ -43,6 +43,22 @@ export const Route = createRootRoute({
         content: 'summary_large_image',
       },
     ],
+    links: [{ rel: 'icon', href: '/favicon.ico' }],
+    scripts: [
+      {
+        type: 'application/ld+json',
+        children: JSON.stringify({
+          '@context': 'https://schema.org',
+          '@type': 'Organization',
+          name: 'Samuel Store',
+          sameAs: [
+            'https://www.facebook.com/SamuelStoreGt',
+            'https://www.instagram.com/SamuelStoreGt',
+            'https://www.tiktok.com/@SamuelStoreGt',
+          ],
+        }),
+      },
+    ],
   }),
   shellComponent: RootDocument,
   notFoundComponent: NotFoundPage,
