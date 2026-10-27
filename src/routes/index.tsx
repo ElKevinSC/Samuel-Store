@@ -543,18 +543,21 @@ setModal('order_done')
 
   async function saveProduct() {
     if (!supabase || !isAdmin) return
-    if (!gameName.trim() || !packageName.trim() || Number(price) <= 0) {
-      setMessage('Escribe juego, paquete y precio válido.')
+    const isStreamNew = newCategory === 'Streaming'
+    const days = Number(newDuration || 0)
+    if (!gameName.trim() || (!isStreamNew && !packageName.trim()) || (isStreamNew && days < 1) || Number(price) <= 0) {
+      setMessage(isStreamNew ? 'Escribe la plataforma, la duración en días y un precio válido.' : 'Escribe juego, paquete y precio válido.')
       return
     }
+    const productLabel = isStreamNew ? `${gameName.trim()} – ${days} días` : packageName.trim()
     setLoading(true)
     const { error } = await supabase.from('products').insert({
-      name: packageName.trim(),
-      detail: packageName.trim(),
+      name: productLabel,
+      detail: productLabel,
       game_name: gameName.trim(),
       category: newCategory,
       contact_type: newContact,
-      duration_days: newCategory === 'Streaming' ? Number(newDuration || 30) : null,
+      duration_days: isStreamNew ? days : null,
       price: Number(price),
       reseller_price: Number(resellerPrice || price),
       active: true
@@ -884,7 +887,6 @@ setModal('order_done')
                     <article className="product-card" key={p.id}>
                       <div className="product-info">
                         <h3>{p.detail || p.name}</h3>
-                        {p.category === 'Streaming' && p.duration_days ? <p style={{ fontSize: 12, opacity: 0.8 }}>{p.duration_days} días</p> : null}
                         <div className="price-row">
                           <div>
                             <span className="price-caption">Precio</span>
@@ -1025,7 +1027,8 @@ setModal('order_done')
               <label>El cliente debe dar<select value={newContact} onChange={e => setNewContact(e.target.value as 'player_id' | 'whatsapp')}><option value="player_id">ID de jugador</option><option value="whatsapp">Número de WhatsApp</option></select></label>
               {newCategory === 'Streaming' && <input type="number" min="1" placeholder="Duración en días (Ej. 30)" value={newDuration} onChange={e => setNewDuration(e.target.value)} />}
               <input placeholder={newCategory === 'Streaming' ? 'Plataforma (Ej. Disney)' : 'Nombre del juego (Ej. Free Fire)'} value={gameName} onChange={e => setGameName(e.target.value)} />
-              <input placeholder={newCategory === 'Streaming' ? 'Perfil (Ej. Perfil 1 pantalla)' : 'Nombre del paquete (Ej. 1000 Diamantes)'} value={packageName} onChange={e => setPackageName(e.target.value)} />
+              {newCategory === 'Videojuegos' && <input placeholder="Nombre del paquete (Ej. 1000 Diamantes)" value={packageName} onChange={e => setPackageName(e.target.value)} />}
+              {newCategory === 'Streaming' && <p style={{ fontSize: 12, opacity: 0.8 }}>El cliente verá: {gameName.trim() || 'Plataforma'} – {newDuration || '…'} días. El perfil (P1, P2…) lo asignas tú al entregar la cuenta.</p>}
               <input type="number" min="0.01" step="0.01" placeholder="Precio cliente (Q)" value={price} onChange={e => setPrice(e.target.value)} />
               <input type="number" min="0" step="0.01" placeholder="Precio revendedor (Q)" value={resellerPrice} onChange={e => setResellerPrice(e.target.value)} />
               <button className="button" disabled={loading} onClick={() => { void saveProduct() }}>Guardar producto</button>
