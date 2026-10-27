@@ -20,6 +20,22 @@ export const Route = createRootRoute({
         content: 'width=device-width, initial-scale=1',
       },
       {
+        name: 'theme-color',
+        content: '#080b10',
+      },
+      {
+        name: 'mobile-web-app-capable',
+        content: 'yes',
+      },
+      {
+        name: 'apple-mobile-web-app-capable',
+        content: 'yes',
+      },
+      {
+        name: 'apple-mobile-web-app-title',
+        content: 'Samuel Store',
+      },
+      {
         title: siteName,
       },
       {
@@ -43,7 +59,12 @@ export const Route = createRootRoute({
         content: 'summary_large_image',
       },
     ],
-    links: [{ rel: 'icon', href: '/favicon.ico' }],
+    links: [
+      { rel: 'icon', href: '/favicon.ico', sizes: 'any' },
+      { rel: 'icon', type: 'image/png', sizes: '192x192', href: '/icon-192.png' },
+      { rel: 'apple-touch-icon', href: '/apple-touch-icon.png' },
+      { rel: 'manifest', href: '/manifest.webmanifest' },
+    ],
     scripts: [
       {
         type: 'application/ld+json',
