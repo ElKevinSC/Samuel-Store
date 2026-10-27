@@ -131,6 +131,10 @@ const [waLink, setWaLink] = useState('')
   const [newDuration, setNewDuration] = useState('30')
   const [delivery, setDelivery] = useState<Record<string, Delivery>>({})
   const [renewItem, setRenewItem] = useState<Item | null>(null)
+  const [allProducts, setAllProducts] = useState<Product[]>([])
+  const [editingId, setEditingId] = useState<string | null>(null)
+  const [editDraft, setEditDraft] = useState({ game_name: '', name: '', price: '', reseller_price: '', duration_days: '', active: true })
+  const [newType, setNewType] = useState('')
   useEffect(() => {
     try { if (!localStorage.getItem('cookies_ok')) setCookieOk(false) } catch { /* nada */ }
   }, [])
@@ -172,14 +176,16 @@ const { data, error } = await supabase.from('orders').select(`*, products(detail
 
   async function refreshAdmin() {
     if (!supabase) return
-    const [p, b, o] = await Promise.all([
+    const [p, b, o, ap] = await Promise.all([
       supabase.from('profiles').select('id,full_name,role,application_status'),
       supabase.from('bank_accounts').select('id,bank_name,account_number,account_holder,active')
         .eq('active', true),
-supabase.from('orders').select(`*, products(detail,game_name), order_items(${ITEM_FIELDS}), profiles(full_name)`).order('created_at', { ascending: false })
+supabase.from('orders').select(`*, products(detail,game_name), order_items(${ITEM_FIELDS}), profiles(full_name)`).order('created_at', { ascending: false }),
+      supabase.from('products').select('id,name,detail,game_name,category,price,reseller_price,active,contact_type,duration_days').order('game_name', { ascending: true }).order('created_at', { ascending: true })
     ])
     if (p.data) setProfiles(p.data as Profile[])
     if (b.data) setBanks(b.data as Bank[])
+    if (ap.data) setAllProducts(ap.data as unknown as Product[])
     if (o.data) {
       const list = await Promise.all((o.data as unknown as Order[]).map(async item => {
         if (!item.receipt_path || !supabase) return item
@@ -531,6 +537,51 @@ setModal('order_done')
     await fetchMyOrders(user.id)
   }
 
+  function startEdit(pr: Product) {
+    setEditingId(pr.id)
+    setEditDraft({
+      game_name: pr.game_name || '',
+      name: pr.detail || pr.name,
+      price: String(pr.price),
+      reseller_price: String(pr.reseller_price),
+      duration_days: pr.duration_days ? String(pr.duration_days) : '',
+      active: pr.active
+    })
+  }
+
+  async function saveEdit(pr: Product) {
+    if (!supabase || !isAdmin) return
+    const price = Number(editDraft.price)
+    const resellerPrice = Number(editDraft.reseller_price)
+    const days = Number(editDraft.duration_days)
+    if (!editDraft.game_name.trim() || !editDraft.name.trim() || !(price > 0) || !(resellerPrice > 0)) {
+      showToast('Completa plataforma o juego, nombre y precios mayores a 0.')
+      return
+    }
+    if (pr.category === 'Streaming' && !(days >= 1)) {
+      showToast('Escribe la duración en días.')
+      return
+    }
+    const patch: Record<string, string | number | boolean> = {
+      game_name: editDraft.game_name.trim(),
+      name: editDraft.name.trim(),
+      detail: editDraft.name.trim(),
+      price,
+      reseller_price: resellerPrice,
+      active: editDraft.active
+    }
+    if (pr.category === 'Streaming') patch.duration_days = days
+    const { error } = await supabase.from('products').update(patch).eq('id', pr.id)
+    if (error) {
+      showToast(`No se pudo guardar: ${error.message}`)
+      return
+    }
+    showToast('Producto actualizado')
+    setEditingId(null)
+    await refreshProducts()
+    await refreshAdmin()
+  }
+
   async function approveReseller(id: string, status: 'approved' | 'rejected') {
     if (!supabase || !isAdmin) return
     const { error } = await supabase.from('profiles').update({
@@ -549,7 +600,7 @@ setModal('order_done')
       setMessage(isStreamNew ? 'Escribe la plataforma, la duración en días y un precio válido.' : 'Escribe juego, paquete y precio válido.')
       return
     }
-    const productLabel = isStreamNew ? `${gameName.trim()} – ${days} días` : packageName.trim()
+    const productLabel = isStreamNew ? (newType.trim() ? `${gameName.trim()} – ${newType.trim()} (${days} días)` : `${gameName.trim()} – ${days} días`) : packageName.trim()
     setLoading(true)
     const { error } = await supabase.from('products').insert({
       name: productLabel,
@@ -568,6 +619,7 @@ setModal('order_done')
       setMessage('Producto guardado.')
       setGameName('')
       setPackageName('')
+      setNewType('')
       setPrice('')
       setResellerPrice('')
       await refreshProducts()
@@ -657,6 +709,17 @@ setModal('order_done')
     }
     return Array.from(m.values())
   }, [products])
+  const productGroups = useMemo(() => {
+    const m = new Map<string, { key: string; category: string; game: string; items: Product[] }>()
+    for (const pr of allProducts) {
+      const game = pr.game_name || 'Otros'
+      const key = `${pr.category}|${game}`
+      const g = m.get(key) ?? { key, category: pr.category, game, items: [] }
+      g.items.push(pr)
+      m.set(key, g)
+    }
+    return Array.from(m.values()).sort((a, b) => a.category.localeCompare(b.category) || a.game.localeCompare(b.game))
+  }, [allProducts])
   const renewProduct = products.find(pr => pr.id === renewItem?.product_id) ?? null
   const renewPrice = renewProduct ? Number(isReseller ? renewProduct.reseller_price : renewProduct.price) : 0
 
@@ -1028,10 +1091,53 @@ setModal('order_done')
               {newCategory === 'Streaming' && <input type="number" min="1" placeholder="Duración en días (Ej. 30)" value={newDuration} onChange={e => setNewDuration(e.target.value)} />}
               <input placeholder={newCategory === 'Streaming' ? 'Plataforma (Ej. Disney)' : 'Nombre del juego (Ej. Free Fire)'} value={gameName} onChange={e => setGameName(e.target.value)} />
               {newCategory === 'Videojuegos' && <input placeholder="Nombre del paquete (Ej. 1000 Diamantes)" value={packageName} onChange={e => setPackageName(e.target.value)} />}
-              {newCategory === 'Streaming' && <p style={{ fontSize: 12, opacity: 0.8 }}>El cliente verá: {gameName.trim() || 'Plataforma'} – {newDuration || '…'} días. El perfil (P1, P2…) lo asignas tú al entregar la cuenta.</p>}
+              {newCategory === 'Streaming' && <input placeholder="Tipo (opcional, Ej. Perfil, Cuenta completa)" value={newType} onChange={e => setNewType(e.target.value)} />}
+              {newCategory === 'Streaming' && <p style={{ fontSize: 12, opacity: 0.8 }}>El cliente verá: {gameName.trim() || 'Plataforma'} – {newType.trim() ? `${newType.trim()} (${newDuration || '…'} días)` : `${newDuration || '…'} días`}. El perfil (P1, P2…) lo asignas tú al entregar la cuenta.</p>}
               <input type="number" min="0.01" step="0.01" placeholder="Precio cliente (Q)" value={price} onChange={e => setPrice(e.target.value)} />
               <input type="number" min="0" step="0.01" placeholder="Precio revendedor (Q)" value={resellerPrice} onChange={e => setResellerPrice(e.target.value)} />
               <button className="button" disabled={loading} onClick={() => { void saveProduct() }}>Guardar producto</button>
+            </div>
+
+            <div className="admin-form" style={{ marginTop: 20 }}>
+              <h3>Editar productos</h3>
+              <p style={{ fontSize: 12, opacity: 0.8 }}>Cambia nombres y precios. Los pedidos ya hechos no cambian; los precios nuevos aplican a compras y renovaciones nuevas. Para unir dos plataformas, ponles el mismo nombre en "Plataforma o juego".</p>
+              <div style={{ maxHeight: '70dvh', overflowY: 'auto' }}>
+                {productGroups.map(g => (
+                  <div key={g.key} style={{ margin: '12px 0' }}>
+                    <strong>{g.game} <small>({g.category})</small></strong>
+                    {g.items.map(pr => (
+                      <div key={pr.id} style={{ background: '#222', padding: 10, margin: '6px 0', borderRadius: 8, opacity: pr.active ? 1 : 0.6 }}>
+                        {editingId === pr.id ? (
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                            <label>Plataforma o juego<input value={editDraft.game_name} onChange={e => setEditDraft(d => ({ ...d, game_name: e.target.value }))} /></label>
+                            <label>Nombre del paquete<input value={editDraft.name} onChange={e => setEditDraft(d => ({ ...d, name: e.target.value }))} /></label>
+                            <label>Precio cliente (Q)<input type="number" min="0.01" step="0.01" value={editDraft.price} onChange={e => setEditDraft(d => ({ ...d, price: e.target.value }))} /></label>
+                            <label>Precio revendedor (Q)<input type="number" min="0.01" step="0.01" value={editDraft.reseller_price} onChange={e => setEditDraft(d => ({ ...d, reseller_price: e.target.value }))} /></label>
+                            {pr.category === 'Streaming' && <label>Duración (días)<input type="number" min="1" value={editDraft.duration_days} onChange={e => setEditDraft(d => ({ ...d, duration_days: e.target.value }))} /></label>}
+                            <label style={{ display: 'flex', flexDirection: 'row', gap: 10, alignItems: 'center' }}>
+                              <input type="checkbox" checked={editDraft.active} onChange={e => setEditDraft(d => ({ ...d, active: e.target.checked }))} style={{ width: 22, height: 22, minWidth: 22, margin: 0, padding: 0, flex: '0 0 22px' }} />
+                              <span>Visible en la tienda</span>
+                            </label>
+                            <div style={{ display: 'flex', gap: 8 }}>
+                              <button className="button small" onClick={() => { void saveEdit(pr) }}>Guardar</button>
+                              <button className="button secondary small" onClick={() => setEditingId(null)}>Cancelar</button>
+                            </div>
+                          </div>
+                        ) : (
+                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10 }}>
+                            <div>
+                              <strong>{pr.detail || pr.name}</strong>
+                              <p style={{ fontSize: 13 }}>Cliente {money(Number(pr.price))} | Revendedor {money(Number(pr.reseller_price))}{pr.active ? '' : ' | Oculto'}</p>
+                            </div>
+                            <button className="button small" onClick={() => startEdit(pr)}>Editar</button>
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                ))}
+                {productGroups.length === 0 && <p>Aún no hay productos.</p>}
+              </div>
             </div>
 
             <div className="admin-form" style={{ marginTop: 20 }}>
