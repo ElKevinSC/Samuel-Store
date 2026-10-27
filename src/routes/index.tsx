@@ -21,6 +21,54 @@ const GAME_LOGOS: Record<string, string> = {
     'https://naifzdrftwjwbxjxucrj.supabase.co/storage/v1/object/public/Productos/070690595d2dc5c5b20eefbabe9f2748.jpg',
 }
 
+const STREAMING_LOGOS: [string, string][] = [
+  ['vix', 'https://naifzdrftwjwbxjxucrj.supabase.co/storage/v1/object/public/Productos/0b42df5cf388918af778be4f7ff312b9.jpg'],
+  ['hbo', 'https://naifzdrftwjwbxjxucrj.supabase.co/storage/v1/object/public/Productos/17f945ced4b38929ff508de7eab20896.jpg'],
+  ['disney', 'https://naifzdrftwjwbxjxucrj.supabase.co/storage/v1/object/public/Productos/218f5c96502b59b807c5a09654278bca.jpg'],
+  ['gemini', 'https://naifzdrftwjwbxjxucrj.supabase.co/storage/v1/object/public/Productos/74fec7fd0717836050ac638c2a9d083a.jpg'],
+  ['paramount', 'https://naifzdrftwjwbxjxucrj.supabase.co/storage/v1/object/public/Productos/7e130dfd4adeeecf4286bb13c46dcd64.jpg'],
+  ['netflix', 'https://naifzdrftwjwbxjxucrj.supabase.co/storage/v1/object/public/Productos/b2fcf3d6a6c7c5814c0d4c583a16b4e1.jpg'],
+  ['youtube', 'https://naifzdrftwjwbxjxucrj.supabase.co/storage/v1/object/public/Productos/cad6039c053896e2719e664ff6b16705.jpg'],
+  ['crunchyroll', 'https://naifzdrftwjwbxjxucrj.supabase.co/storage/v1/object/public/Productos/da2f1bf098ab7f80a1619eaa49bcfc87.jpg'],
+  ['chatgpt', 'https://naifzdrftwjwbxjxucrj.supabase.co/storage/v1/object/public/Productos/e0434dc50b2e2a87f4a7f5797d5d2432.jpg'],
+]
+
+function getStreamingLogo(name: string): string | undefined {
+  const n = name.toLowerCase().replace(/[^a-z0-9]/g, '')
+  if (n === 'max') return STREAMING_LOGOS.find(([k]) => k === 'hbo')?.[1]
+  return STREAMING_LOGOS.find(([k]) => n.startsWith(k))?.[1]
+}
+
+const LEGAL_SECTIONS: [string, string][] = [
+  ['1. Titular y contacto', 'Samuel Store es un negocio digital independiente de Guatemala, a cargo de Kevin Castillo. Contacto: WhatsApp +502 5456 0623 y redes sociales @SamuelStoreGt.'],
+  ['2. Actividad', 'Venta de recargas y paquetes digitales para videojuegos y de acceso a perfiles de servicios de streaming. Los pedidos se pagan por depósito bancario y se entregan manualmente después de verificar el pago.'],
+  ['3. Independencia y marcas', 'Samuel Store no está afiliada, patrocinada, autorizada ni respaldada por ninguna plataforma de videojuegos ni de streaming. Los nombres, marcas y logos que aparecen en esta tienda pertenecen a sus respectivos dueños y se muestran solo para identificar el producto o servicio que se ofrece. Si eres titular de una marca y quieres pedir un ajuste, escríbenos por WhatsApp y lo revisaremos.'],
+  ['4. Naturaleza del servicio de streaming', 'El servicio consiste en el acceso temporal a un perfil de uso personal (o a una cuenta completa, según el paquete) administrado por Samuel Store, durante los días indicados en la compra. No se transfiere la propiedad de ninguna cuenta y el cliente no adquiere derechos sobre la plataforma ni sobre su contenido.'],
+  ['5. Disponibilidad y cambios de terceros', 'Las plataformas pueden cambiar sus reglas, precios o funciones, o bloquear accesos por razones ajenas a Samuel Store. No garantizamos disponibilidad ininterrumpida. Si el servicio deja de funcionar por una causa que no sea del cliente, lo repondremos o ajustaremos los días restantes; si no es posible, devolveremos la parte proporcional no utilizada.'],
+  ['6. Obligaciones del cliente', 'Debes ser mayor de 18 años o contar con autorización de tu padre, madre o tutor. Debes dar datos verdaderos, usar el servicio de forma personal y respetar las condiciones del servicio que se muestran en cada compra. El incumplimiento puede ocasionar la cancelación inmediata del servicio, sin reposición ni devolución de dinero.'],
+  ['7. Pagos', 'Solo se aceptan depósitos a las cuentas que muestra la tienda. El pedido se procesa después de verificar el comprobante. Un comprobante falso, alterado o repetido cancela el pedido, puede bloquear la cuenta y podrá informarse a las autoridades y entidades bancarias.'],
+  ['8. Limitación de responsabilidad', 'En la medida permitida por la ley, Samuel Store no responde por daños indirectos, pérdida de datos, de contenido o de ganancias, ni por interrupciones causadas por las plataformas, el proveedor de internet, el banco o hechos fuera de nuestro control. Nuestra responsabilidad máxima por cualquier reclamo se limita al monto pagado por el servicio afectado. Esto no limita los derechos que la ley te reconoce como consumidor.'],
+  ['9. Propiedad intelectual', 'El nombre, logo, diseño y contenido propio de esta tienda pertenecen a Samuel Store y no pueden copiarse ni usarse sin autorización.'],
+  ['10. Reclamos', 'Si tienes un problema con tu pedido o servicio, escríbenos por WhatsApp indicando tu nombre y los datos del pedido. Responderemos lo antes posible.'],
+  ['11. Cambios', 'Podemos actualizar este aviso. Se aplica la versión vigente al momento de la compra.'],
+  ['12. Ley aplicable', 'Este aviso se rige por las leyes de la República de Guatemala. Cualquier controversia se resolverá ante los tribunales competentes de Guatemala, sin perjuicio de tus derechos como consumidor.'],
+]
+
+const PRIVACY_SECTIONS: [string, string][] = [
+  ['1. Responsable', 'Samuel Store, a cargo de Kevin Castillo. Para temas de privacidad escríbenos por WhatsApp al +502 5456 0623.'],
+  ['2. Datos que recopilamos', 'Nombre, correo electrónico y contraseña de acceso (la contraseña la protege el servicio de autenticación y nosotros no podemos verla); ID de jugador o número de WhatsApp; referencia, fecha y monto del depósito; comprobante de pago (imagen o PDF), que puede mostrar datos bancarios y solo se usa para verificar el pago; historial de pedidos y suscripciones. Si solicitas ser revendedor: edad y ventas estimadas. También guardamos datos técnicos básicos para mantener tu sesión.'],
+  ['3. Para qué los usamos', 'Para verificar pagos, realizar recargas y entregas, darte soporte y avisos de tu servicio (por ejemplo, su vencimiento), administrar el programa de revendedores, prevenir fraudes y cumplir obligaciones legales.'],
+  ['4. Cuentas que te entregamos', 'Los datos de acceso de los servicios de streaming que te entregamos se guardan para que puedas consultarlos en tu panel. Solo pueden verlos tú y el administrador de la tienda.'],
+  ['5. Proveedores y terceros', 'Para operar la tienda usamos Supabase (base de datos, autenticación y archivos) y Netlify (alojamiento del sitio). Estos servicios pueden guardar datos en servidores fuera de Guatemala. Si hablas con nosotros por WhatsApp, esa conversación se rige además por las políticas de WhatsApp (Meta). No vendemos tus datos ni los usamos para publicidad de terceros.'],
+  ['6. Divulgación legal', 'Podremos compartir información con bancos o autoridades cuando una ley, una orden de autoridad competente o la prevención de un fraude lo requiera.'],
+  ['7. Conservación', 'Guardamos tus datos mientras tengas una cuenta o sea necesario para atender pedidos, reclamos y obligaciones contables o legales. Después los eliminamos o anonimizamos cuando sea posible.'],
+  ['8. Seguridad', 'Aplicamos medidas razonables: acceso restringido por usuario, comprobantes en almacenamiento privado y conexión cifrada (HTTPS). Ningún sistema es 100 % seguro, por lo que no podemos garantizar una seguridad absoluta. Cuida tu contraseña y no compartas las cuentas que te entregamos.'],
+  ['9. Tus derechos', 'Puedes pedirnos por WhatsApp acceder a tus datos, corregirlos, eliminarlos o limitar su uso. Responderemos lo antes posible. Algunos registros de ventas pueden conservarse el tiempo que exijan la ley o la contabilidad.'],
+  ['10. Menores de edad', 'La tienda no está dirigida a menores de 18 años sin autorización de su padre, madre o tutor. Si crees que un menor nos dio datos sin esa autorización, avísanos para eliminarlos.'],
+  ['11. Cookies y almacenamiento', 'Usamos el almacenamiento del navegador solo para mantener tu sesión iniciada y recordar que viste el aviso de cookies. No usamos cookies de publicidad ni de seguimiento.'],
+  ['12. Cambios', 'Podemos actualizar esta política. La versión vigente es la publicada en la tienda.'],
+]
+
 function getGameLogo(game: string): string | undefined {
   return GAME_LOGOS[game.toLowerCase().replace(/[\s_-]/g, '')]
 }
@@ -83,7 +131,7 @@ function StreamingConditions() {
   )
 }
 
-type Product = { id: string; name: string; detail: string; game_name: string | null; category: Category; price: number; reseller_price: number; active: boolean; contact_type: string; duration_days: number | null }
+type Product = { id: string; name: string; detail: string; game_name: string | null; category: Category; price: number; reseller_price: number; active: boolean; contact_type: string; duration_days: number | null; image_url?: string | null }
 type Bank = { id: string; bank_name: string; account_number: string; account_holder: string; active: boolean }
 type Profile = { id: string; full_name: string; role: string; application_status: string }
 type Order = { id: string; user_id: string; product_id: string | null; player_id: string; amount: number; reference_nc: string; deposit_date: string | null; receipt_path: string | null; status: string; created_at: string; products?: { detail?: string; game_name?: string } | null; order_items?: Item[] | null; profiles?: { full_name?: string } | null; receipt_signed_url?: string | null }
@@ -133,8 +181,9 @@ const [waLink, setWaLink] = useState('')
   const [renewItem, setRenewItem] = useState<Item | null>(null)
   const [allProducts, setAllProducts] = useState<Product[]>([])
   const [editingId, setEditingId] = useState<string | null>(null)
-  const [editDraft, setEditDraft] = useState({ game_name: '', name: '', price: '', reseller_price: '', duration_days: '', active: true })
+  const [editDraft, setEditDraft] = useState({ game_name: '', name: '', price: '', reseller_price: '', duration_days: '', active: true, image_url: '' })
   const [newType, setNewType] = useState('')
+  const [newLogo, setNewLogo] = useState('')
   useEffect(() => {
     try { if (!localStorage.getItem('cookies_ok')) setCookieOk(false) } catch { /* nada */ }
   }, [])
@@ -148,7 +197,7 @@ const [waLink, setWaLink] = useState('')
 
   async function refreshProducts() {
     if (!supabase) return
-    const { data, error } = await supabase.from('products').select('id,name,detail,game_name,category,price,reseller_price,active,contact_type,duration_days').eq('active', true).order('created_at', { ascending: false })
+    const { data, error } = await supabase.from('products').select('id,name,detail,game_name,category,price,reseller_price,active,contact_type,duration_days,image_url').eq('active', true).order('created_at', { ascending: false })
     if (error) setMessage(`No se pudo cargar el catálogo: ${error.message}`)
     if (data) setProducts(data as Product[])
   }
@@ -181,7 +230,7 @@ const { data, error } = await supabase.from('orders').select(`*, products(detail
       supabase.from('bank_accounts').select('id,bank_name,account_number,account_holder,active')
         .eq('active', true),
 supabase.from('orders').select(`*, products(detail,game_name), order_items(${ITEM_FIELDS}), profiles(full_name)`).order('created_at', { ascending: false }),
-      supabase.from('products').select('id,name,detail,game_name,category,price,reseller_price,active,contact_type,duration_days').order('game_name', { ascending: true }).order('created_at', { ascending: true })
+      supabase.from('products').select('id,name,detail,game_name,category,price,reseller_price,active,contact_type,duration_days,image_url').order('game_name', { ascending: true }).order('created_at', { ascending: true })
     ])
     if (p.data) setProfiles(p.data as Profile[])
     if (b.data) setBanks(b.data as Bank[])
@@ -545,7 +594,8 @@ setModal('order_done')
       price: String(pr.price),
       reseller_price: String(pr.reseller_price),
       duration_days: pr.duration_days ? String(pr.duration_days) : '',
-      active: pr.active
+      active: pr.active,
+      image_url: pr.image_url || ''
     })
   }
 
@@ -562,19 +612,28 @@ setModal('order_done')
       showToast('Escribe la duración en días.')
       return
     }
-    const patch: Record<string, string | number | boolean> = {
+    const logoUrl = editDraft.image_url.trim()
+    if (logoUrl && !/^https:\/\//i.test(logoUrl)) {
+      showToast('El enlace del logo debe empezar con https://')
+      return
+    }
+    const patch: Record<string, string | number | boolean | null> = {
       game_name: editDraft.game_name.trim(),
       name: editDraft.name.trim(),
       detail: editDraft.name.trim(),
       price,
       reseller_price: resellerPrice,
-      active: editDraft.active
+      active: editDraft.active,
+      image_url: logoUrl || null
     }
     if (pr.category === 'Streaming') patch.duration_days = days
     const { error } = await supabase.from('products').update(patch).eq('id', pr.id)
     if (error) {
       showToast(`No se pudo guardar: ${error.message}`)
       return
+    }
+    if (logoUrl !== (pr.image_url || '')) {
+      await supabase.from('products').update({ image_url: logoUrl || null }).eq('category', pr.category).eq('game_name', editDraft.game_name.trim())
     }
     showToast('Producto actualizado')
     setEditingId(null)
@@ -600,6 +659,11 @@ setModal('order_done')
       setMessage(isStreamNew ? 'Escribe la plataforma, la duración en días y un precio válido.' : 'Escribe juego, paquete y precio válido.')
       return
     }
+    const newLogoUrl = newLogo.trim()
+    if (newLogoUrl && !/^https:\/\//i.test(newLogoUrl)) {
+      setMessage('El enlace del logo debe empezar con https://')
+      return
+    }
     const productLabel = isStreamNew ? (newType.trim() ? `${gameName.trim()} – ${newType.trim()} (${days} días)` : `${gameName.trim()} – ${days} días`) : packageName.trim()
     setLoading(true)
     const { error } = await supabase.from('products').insert({
@@ -609,6 +673,7 @@ setModal('order_done')
       category: newCategory,
       contact_type: newContact,
       duration_days: isStreamNew ? days : null,
+      image_url: newLogoUrl || null,
       price: Number(price),
       reseller_price: Number(resellerPrice || price),
       active: true
@@ -620,6 +685,7 @@ setModal('order_done')
       setGameName('')
       setPackageName('')
       setNewType('')
+      setNewLogo('')
       setPrice('')
       setResellerPrice('')
       await refreshProducts()
@@ -648,6 +714,14 @@ setModal('order_done')
     }
   }
 
+  const logoByGame = useMemo(() => {
+    const m = new Map<string, string>()
+    for (const pr of products) {
+      const g = pr.game_name || 'Otros'
+      if (pr.category === section && pr.image_url && !m.has(g)) m.set(g, pr.image_url)
+    }
+    return m
+  }, [products, section])
   const games = useMemo(() => Array.from(new Set(products.filter(p => p.category === section).map(p => p.game_name || 'Otros'))), [products, section])
   const gameProducts = useMemo(() => products.filter(p => p.category === section && (p.game_name || 'Otros') === selectedGame), [products, section, selectedGame])
   const pendingResellers = profiles.filter(p => p.application_status === 'pending')
@@ -898,7 +972,7 @@ setModal('order_done')
                 <p style={{ color: 'gray' }}>Todavía no hay {section === 'Streaming' ? 'plataformas' : 'juegos'} disponibles.</p>
               ) : (
                 games.map(game => {
-                  const logo = section === 'Videojuegos' ? getGameLogo(game) : undefined
+                  const logo = logoByGame.get(game) ?? (section === 'Videojuegos' ? getGameLogo(game) : getStreamingLogo(game))
                   return (
                     <button key={game} className="category-card" onClick={() => setSelectedGame(game)}>
                       <span
@@ -1092,6 +1166,7 @@ setModal('order_done')
               <input placeholder={newCategory === 'Streaming' ? 'Plataforma (Ej. Disney)' : 'Nombre del juego (Ej. Free Fire)'} value={gameName} onChange={e => setGameName(e.target.value)} />
               {newCategory === 'Videojuegos' && <input placeholder="Nombre del paquete (Ej. 1000 Diamantes)" value={packageName} onChange={e => setPackageName(e.target.value)} />}
               {newCategory === 'Streaming' && <input placeholder="Tipo (opcional, Ej. Perfil, Cuenta completa)" value={newType} onChange={e => setNewType(e.target.value)} />}
+              <input placeholder="Logo (enlace https de la imagen, opcional)" value={newLogo} onChange={e => setNewLogo(e.target.value)} />
               {newCategory === 'Streaming' && <p style={{ fontSize: 12, opacity: 0.8 }}>El cliente verá: {gameName.trim() || 'Plataforma'} – {newType.trim() ? `${newType.trim()} (${newDuration || '…'} días)` : `${newDuration || '…'} días`}. El perfil (P1, P2…) lo asignas tú al entregar la cuenta.</p>}
               <input type="number" min="0.01" step="0.01" placeholder="Precio cliente (Q)" value={price} onChange={e => setPrice(e.target.value)} />
               <input type="number" min="0" step="0.01" placeholder="Precio revendedor (Q)" value={resellerPrice} onChange={e => setResellerPrice(e.target.value)} />
@@ -1111,6 +1186,7 @@ setModal('order_done')
                           <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
                             <label>Plataforma o juego<input value={editDraft.game_name} onChange={e => setEditDraft(d => ({ ...d, game_name: e.target.value }))} /></label>
                             <label>Nombre del paquete<input value={editDraft.name} onChange={e => setEditDraft(d => ({ ...d, name: e.target.value }))} /></label>
+                            <label>Logo (enlace https, opcional)<input value={editDraft.image_url} onChange={e => setEditDraft(d => ({ ...d, image_url: e.target.value }))} /></label>
                             <label>Precio cliente (Q)<input type="number" min="0.01" step="0.01" value={editDraft.price} onChange={e => setEditDraft(d => ({ ...d, price: e.target.value }))} /></label>
                             <label>Precio revendedor (Q)<input type="number" min="0.01" step="0.01" value={editDraft.reseller_price} onChange={e => setEditDraft(d => ({ ...d, reseller_price: e.target.value }))} /></label>
                             {pr.category === 'Streaming' && <label>Duración (días)<input type="number" min="1" value={editDraft.duration_days} onChange={e => setEditDraft(d => ({ ...d, duration_days: e.target.value }))} /></label>}
@@ -1311,11 +1387,8 @@ setModal('order_done')
             <>
               <DialogHeader><DialogTitle>Aviso legal</DialogTitle></DialogHeader>
               <div style={{ maxHeight: '60dvh', overflowY: 'auto', fontSize: 14, lineHeight: 1.5 }}>
-                <p><strong>Titular.</strong><br />Samuel Store, tienda digital de Guatemala, a cargo de Kevin Castillo.</p>
-                <p><strong>Contacto.</strong><br />WhatsApp +502 5456 0623 y redes sociales @SamuelStoreGt.</p>
-                <p><strong>Actividad.</strong><br />Venta de recargas y paquetes digitales para videojuegos.</p>
-                <p><strong>Propiedad.</strong><br />El nombre, logo y diseño de la tienda son de Samuel Store. Las marcas de los juegos pertenecen a sus dueños y Samuel Store no está afiliada a ellos.</p>
-                <p><strong>Uso de la tienda.</strong><br />Al usar esta tienda aceptas los Términos y condiciones y la Política de privacidad.</p>
+                {LEGAL_SECTIONS.map(([title, text]) => <p key={title} style={{ marginBottom: 10 }}><strong>{title}</strong><br />{text}</p>)}
+                <p style={{ fontSize: 12, opacity: 0.7 }}>Última actualización: octubre de 2026.</p>
               </div>
             </>
           )}
@@ -1323,12 +1396,7 @@ setModal('order_done')
             <>
               <DialogHeader><DialogTitle>Política de privacidad</DialogTitle></DialogHeader>
               <div style={{ maxHeight: '60dvh', overflowY: 'auto', fontSize: 14, lineHeight: 1.5 }}>
-                <p><strong>Datos que guardamos.</strong><br />Nombre, correo, ID de jugador, referencia, fecha y monto del depósito, comprobante y el historial de tus pedidos. Si solicitas ser revendedor, también tu edad y ventas estimadas. Tu contraseña la protege el servicio de acceso y nosotros no podemos verla.</p>
-                <p><strong>Para qué los usamos.</strong><br />Para verificar pagos, realizar tus recargas, darte soporte y administrar el programa de revendedores.</p>
-                <p><strong>Dónde se guardan.</strong><br />En Supabase, nuestro servicio de base de datos y almacenamiento. Los comprobantes se guardan en un almacenamiento privado.</p>
-                <p><strong>Con quién los compartimos.</strong><br />No vendemos ni compartimos tus datos con terceros, salvo que la ley lo exija. Solo usamos WhatsApp cuando tú nos envías el mensaje.</p>
-                <p><strong>Cookies y almacenamiento.</strong><br />Usamos el almacenamiento del navegador solo para mantener tu sesión iniciada. No usamos cookies de publicidad.</p>
-                <p><strong>Tus derechos.</strong><br />Puedes pedirnos por WhatsApp que te mostremos, corrijamos o borremos tus datos. Algunos registros de ventas pueden conservarse el tiempo necesario.</p>
+                {PRIVACY_SECTIONS.map(([title, text]) => <p key={title} style={{ marginBottom: 10 }}><strong>{title}</strong><br />{text}</p>)}
                 <p style={{ fontSize: 12, opacity: 0.7 }}>Última actualización: octubre de 2026.</p>
               </div>
             </>
