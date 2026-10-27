@@ -1,7 +1,7 @@
 import { createFileRoute } from '@tanstack/react-router'
 import { useEffect, useMemo, useState } from 'react'
 import { createClient, type User } from '@supabase/supabase-js'
-import { ArrowRight, ArrowLeft, Gamepad2, Menu, X, Upload, RefreshCw, LogOut, ShoppingCart } from 'lucide-react'
+import { ArrowRight, ArrowLeft, Gamepad2, Menu, X, Upload, RefreshCw, LogOut, ShoppingCart, Tv } from 'lucide-react'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog'
 import { ControllerArt } from '@/components/store/controller-art'
 import { money, type Category } from '@/data/catalog'
@@ -25,15 +25,73 @@ function getGameLogo(game: string): string | undefined {
   return GAME_LOGOS[game.toLowerCase().replace(/[\s_-]/g, '')]
 }
 
-type Product = { id: string; name: string; detail: string; game_name: string | null; category: Category; price: number; reseller_price: number; active: boolean }
+const ITEM_FIELDS = 'id,game_name,product_name,product_id,player_id,quantity,unit_price,line_total,category,contact_type,duration_days,renewal_of,delivery_email,delivery_password,delivery_profile,delivery_pin,valid_until,delivered_at'
+
+function todayGT(): string {
+  return new Date().toLocaleDateString('en-CA', { timeZone: 'America/Guatemala' })
+}
+function daysLeft(validUntil: string): number {
+  const a = Date.parse(`${validUntil.slice(0, 10)}T00:00:00Z`)
+  const b = Date.parse(`${todayGT()}T00:00:00Z`)
+  return Math.round((a - b) / 86400000)
+}
+function addDays(d: string, n: number): string {
+  const t = new Date(`${d}T00:00:00Z`)
+  t.setUTCDate(t.getUTCDate() + n)
+  return t.toISOString().slice(0, 10)
+}
+function fmtDate(d: string | null | undefined): string {
+  if (!d) return '—'
+  const [y, m, day] = d.slice(0, 10).split('-')
+  return `${day}/${m}/${y}`
+}
+function waDigits(v: string): string {
+  const d = v.replace(/\D/g, '')
+  return d.length === 8 ? `502${d}` : d
+}
+function waLinkTo(number: string, text: string): string {
+  return `https://wa.me/${waDigits(number)}?text=${encodeURIComponent(text)}`
+}
+
+type Item = { id: string; game_name: string; product_name: string; product_id: string | null; player_id: string; quantity: number; unit_price: number; line_total: number; category: string; contact_type: string; duration_days: number | null; renewal_of: string | null; delivery_email: string | null; delivery_password: string | null; delivery_profile: string | null; delivery_pin: string | null; valid_until: string | null; delivered_at: string | null }
+type Delivery = { email: string; password: string; profile: string; pin: string; valid_until: string }
+
+function baseDel(it: Item): Delivery {
+  return {
+    email: it.delivery_email ?? '',
+    password: it.delivery_password ?? '',
+    profile: it.delivery_profile ?? '',
+    pin: it.delivery_pin ?? '',
+    valid_until: it.valid_until ?? addDays(todayGT(), it.duration_days ?? 30),
+  }
+}
+function deliveryText(game: string, d: Delivery): string {
+  return `*${game} - ${d.profile}*\n\n📩 Correo: ${d.email}\n🔑 Contraseña: ${d.password}\n👥 Perfil: ${d.profile}\n🚨 Pin: ${d.pin || '—'}\n\nVálido hasta ${fmtDate(d.valid_until)}`
+}
+
+function StreamingConditions() {
+  return (
+    <div style={{ background: '#111', padding: 12, borderRadius: 8, fontSize: 13, lineHeight: 1.5, maxHeight: 220, overflowY: 'auto' }}>
+      <p><strong>CONDICIONES DEL SERVICIO</strong></p>
+      <p><strong>PERFILES DE STREAMING</strong></p>
+      <p><strong>1. PERFIL = 1 DISPOSITIVO</strong><br />El perfil es de uso personal y exclusivo. No puede utilizarse en otros dispositivos, aunque sea en diferentes horarios.</p>
+      <p><strong>2. RESPETA LA CONFIGURACIÓN ASIGNADA</strong><br />No está permitido agregar, eliminar o modificar perfiles, contraseñas o PIN.</p>
+      <p><strong>3. RENOVACIÓN DEL SERVICIO</strong><br />Para renovar su servicio, debe realizar el pago antes de llegar a la fecha de vencimiento.</p>
+      <p><strong>4. IMPORTANTE</strong><br />El incumplimiento de estas condiciones ocasionará la cancelación inmediata del servicio, sin reposición ni devolución de dinero.</p>
+      <p><strong>MENSAJE FINAL</strong><br />Gracias por respetar las condiciones y hacer un uso adecuado del servicio.</p>
+    </div>
+  )
+}
+
+type Product = { id: string; name: string; detail: string; game_name: string | null; category: Category; price: number; reseller_price: number; active: boolean; contact_type: string; duration_days: number | null }
 type Bank = { id: string; bank_name: string; account_number: string; account_holder: string; active: boolean }
 type Profile = { id: string; full_name: string; role: string; application_status: string }
-type Order = { id: string; user_id: string; product_id: string | null; player_id: string; amount: number; reference_nc: string; deposit_date: string | null; receipt_path: string | null; status: string; created_at: string; products?: { detail?: string; game_name?: string } | null; order_items?: { game_name: string; product_name: string; quantity: number; unit_price: number; line_total: number }[] | null; profiles?: { full_name?: string } | null; receipt_signed_url?: string | null }
+type Order = { id: string; user_id: string; product_id: string | null; player_id: string; amount: number; reference_nc: string; deposit_date: string | null; receipt_path: string | null; status: string; created_at: string; products?: { detail?: string; game_name?: string } | null; order_items?: Item[] | null; profiles?: { full_name?: string } | null; receipt_signed_url?: string | null }
 
 function Home() {
   const [selectedGame, setSelectedGame] = useState<string | null>(null)
   const [menu, setMenu] = useState(false)
-  const [modal, setModal] = useState<'login' | 'register' | 'reseller_apply' | 'checkout'| 'my_orders' | 'terms' | 'order_done' | 'legal' | 'privacy' | 'user_orders' | null>(null)
+  const [modal, setModal] = useState<'login' | 'register' | 'reseller_apply' | 'checkout'| 'my_orders' | 'terms' | 'order_done' | 'legal' | 'privacy' | 'user_orders' | 'my_subs' | 'renew' | null>(null)
   const [user, setUser] = useState<User | null>(null)
   const [isAdmin, setIsAdmin] = useState(false)
   const [isReseller, setIsReseller] = useState(false)
@@ -65,6 +123,14 @@ const [waLink, setWaLink] = useState('')
   const [toast, setToast] = useState('')
   const [cookieOk, setCookieOk] = useState(true)
   const [historyUser, setHistoryUser] = useState<string | null>(null)
+  const [section, setSection] = useState<'Videojuegos' | 'Streaming'>('Videojuegos')
+  const [acceptService, setAcceptService] = useState(false)
+  const [lastStreaming, setLastStreaming] = useState(false)
+  const [newCategory, setNewCategory] = useState<'Videojuegos' | 'Streaming'>('Videojuegos')
+  const [newContact, setNewContact] = useState<'player_id' | 'whatsapp'>('player_id')
+  const [newDuration, setNewDuration] = useState('30')
+  const [delivery, setDelivery] = useState<Record<string, Delivery>>({})
+  const [renewItem, setRenewItem] = useState<Item | null>(null)
   useEffect(() => {
     try { if (!localStorage.getItem('cookies_ok')) setCookieOk(false) } catch { /* nada */ }
   }, [])
@@ -78,7 +144,7 @@ const [waLink, setWaLink] = useState('')
 
   async function refreshProducts() {
     if (!supabase) return
-    const { data, error } = await supabase.from('products').select('id,name,detail,game_name,category,price,reseller_price,active').eq('active', true).order('created_at', { ascending: false })
+    const { data, error } = await supabase.from('products').select('id,name,detail,game_name,category,price,reseller_price,active,contact_type,duration_days').eq('active', true).order('created_at', { ascending: false })
     if (error) setMessage(`No se pudo cargar el catálogo: ${error.message}`)
     if (data) setProducts(data as Product[])
   }
@@ -100,8 +166,8 @@ const [waLink, setWaLink] = useState('')
   }
   async function fetchMyOrders(uid: string) {
     if (!supabase) return
-const { data, error } = await supabase.from('orders').select('*, products(detail,game_name), order_items(game_name,product_name,quantity,unit_price,line_total)').eq('user_id', uid).order('created_at', { ascending: false })
-    if (!error && data) setMyOrders(data as Order[])
+const { data, error } = await supabase.from('orders').select(`*, products(detail,game_name), order_items(${ITEM_FIELDS})`).eq('user_id', uid).order('created_at', { ascending: false })
+    if (!error && data) setMyOrders(data as unknown as Order[])
   }
 
   async function refreshAdmin() {
@@ -110,12 +176,12 @@ const { data, error } = await supabase.from('orders').select('*, products(detail
       supabase.from('profiles').select('id,full_name,role,application_status'),
       supabase.from('bank_accounts').select('id,bank_name,account_number,account_holder,active')
         .eq('active', true),
-supabase.from('orders').select('*, products(detail,game_name), order_items(game_name,product_name,quantity,unit_price,line_total), profiles(full_name)').order('created_at', { ascending: false })
+supabase.from('orders').select(`*, products(detail,game_name), order_items(${ITEM_FIELDS}), profiles(full_name)`).order('created_at', { ascending: false })
     ])
     if (p.data) setProfiles(p.data as Profile[])
     if (b.data) setBanks(b.data as Bank[])
     if (o.data) {
-      const list = await Promise.all((o.data as Order[]).map(async item => {
+      const list = await Promise.all((o.data as unknown as Order[]).map(async item => {
         if (!item.receipt_path || !supabase) return item
         const { data } = await supabase.storage.from('boletas').createSignedUrl(item.receipt_path, 600)
         return { ...item, receipt_signed_url: data?.signedUrl ?? null }
@@ -280,6 +346,17 @@ function changeCartQuantity(productId: string, quantity: number) {
   setMessage('Debes aceptar los términos y condiciones.')
   return
     }  
+    if (cart[0].product.category === 'Streaming' && !acceptService) {
+      setMessage('Debes aceptar las condiciones del servicio de streaming.')
+      return
+    }
+    if (cart[0].product.contact_type === 'whatsapp') {
+      const digits = playerId.replace(/\D/g, '')
+      if (!(digits.length === 8 || (digits.length >= 10 && digits.length <= 15))) {
+        setMessage('Escribe un número de WhatsApp válido.')
+        return
+      }
+    }
     if (receipt.size > 5 * 1024 * 1024) {
       setMessage('El comprobante debe pesar máximo 5 MB.')
       return
@@ -318,9 +395,13 @@ function changeCartQuantity(productId: string, quantity: number) {
     setLoading(false)
     setModal(null)
     const lines = cart.map(item => `• ${item.quantity} x ${item.product.detail || item.product.name}`).join('\n')
-const text = `Hola Samuel Store, acabo de hacer un pedido.\n\nPedido: ${String(orderId ?? '').slice(0, 8)}\nJuego: ${cart[0].product.game_name || 'Otros'}\nID de jugador: ${playerId.trim()}\n\nPaquetes:\n${lines}\n\nTotal: ${money(Number(depositAmount))}\nReferencia NC: ${reference.trim()}\n\nYa envié mi comprobante en la tienda.`
+const isStream = cart[0].product.category === 'Streaming'
+const isWa = cart[0].product.contact_type === 'whatsapp'
+const text = `Hola Samuel Store, acabo de hacer un pedido.\n\nPedido: ${String(orderId ?? '').slice(0, 8)}\n${isStream ? 'Plataforma' : 'Juego'}: ${cart[0].product.game_name || 'Otros'}\n${isWa ? 'Mi WhatsApp' : 'ID de jugador'}: ${playerId.trim()}\n\nPaquetes:\n${lines}\n\nTotal: ${money(Number(depositAmount))}\nReferencia NC: ${reference.trim()}\n\nYa envié mi comprobante en la tienda.`
+setLastStreaming(isStream)
 setWaLink(`https://wa.me/50254560623?text=${encodeURIComponent(text)}`)
 setAcceptTerms(false)
+setAcceptService(false)
 setMessage('')
 setModal('order_done')
     await fetchMyOrders(user.id)
@@ -337,6 +418,117 @@ setModal('order_done')
     const { error } = await supabase.from('orders').update({ status }).eq('id', id)
     if (error) setMessage(`No se pudo actualizar el pedido: ${error.message}`)
     else await refreshAdmin()
+  }
+
+  function getDel(it: Item): Delivery {
+    return delivery[it.id] ?? baseDel(it)
+  }
+  function setDel(it: Item, patch: Partial<Delivery>) {
+    setDelivery(cur => ({ ...cur, [it.id]: { ...(cur[it.id] ?? baseDel(it)), ...patch } }))
+  }
+
+  async function completeDelivery(o: Order) {
+    if (!supabase || !isAdmin) return
+    const items = (o.order_items ?? []).filter(it => it.category === 'Streaming' && !it.renewal_of)
+    for (const it of items) {
+      const d = getDel(it)
+      if (!d.email.trim() || !d.password.trim() || !d.profile.trim() || !d.valid_until) {
+        showToast('Completa correo, contraseña, perfil y fecha en cada perfil.')
+        return
+      }
+    }
+    if (!window.confirm('¿Guardar los datos de la cuenta y completar este pedido?')) return
+    for (const it of items) {
+      const d = getDel(it)
+      const { error: itemError } = await supabase.from('order_items').update({
+        delivery_email: d.email.trim(),
+        delivery_password: d.password.trim(),
+        delivery_profile: d.profile.trim(),
+        delivery_pin: d.pin.trim() || null,
+        valid_until: d.valid_until,
+        delivered_at: new Date().toISOString()
+      }).eq('id', it.id)
+      if (itemError) {
+        showToast(`No se pudo guardar la entrega: ${itemError.message}`)
+        return
+      }
+    }
+    const { error } = await supabase.from('orders').update({ status: 'completed' }).eq('id', o.id)
+    if (error) showToast(`No se pudo completar el pedido: ${error.message}`)
+    else {
+      showToast('Pedido completado')
+      await refreshAdmin()
+    }
+  }
+
+  async function setGameContact(category: string, game: string, value: string) {
+    if (!supabase || !isAdmin) return
+    const { error } = await supabase.from('products').update({ contact_type: value }).eq('category', category).eq('game_name', game)
+    if (error) showToast(`No se pudo cambiar: ${error.message}`)
+    else {
+      showToast('Guardado')
+      await refreshProducts()
+    }
+  }
+
+  async function submitRenewal() {
+    if (!supabase || !user || !renewItem || !renewProduct) {
+      setMessage('Este servicio ya no está disponible para renovar.')
+      return
+    }
+    if (!reference.trim() || !depositDate || !receipt) {
+      setMessage('Completa todos los campos y adjunta el comprobante.')
+      return
+    }
+    if (!acceptTerms || !acceptService) {
+      setMessage('Debes aceptar los términos y las condiciones del servicio.')
+      return
+    }
+    if (receipt.size > 5 * 1024 * 1024) {
+      setMessage('El comprobante debe pesar máximo 5 MB.')
+      return
+    }
+    if (!['image/jpeg', 'image/png', 'image/webp', 'application/pdf'].includes(receipt.type)) {
+      setMessage('Usa JPG, PNG, WEBP o PDF.')
+      return
+    }
+    setLoading(true)
+    setMessage('Subiendo comprobante...')
+    const ext = receipt.name.split('.').pop()?.toLowerCase() || 'jpg'
+    const path = `${user.id}/${crypto.randomUUID()}.${ext}`
+    const { error: uploadError } = await supabase.storage.from('boletas').upload(path, receipt, {
+      contentType: receipt.type,
+      upsert: false
+    })
+    if (uploadError) {
+      setLoading(false)
+      setMessage(`Error al subir boleta: ${uploadError.message}`)
+      return
+    }
+    const { error } = await supabase.rpc('create_renewal', {
+      p_item_id: renewItem.id,
+      p_reference_nc: reference.trim(),
+      p_deposit_date: depositDate,
+      p_receipt_path: path,
+      p_amount: renewPrice
+    })
+    if (error) {
+      await supabase.storage.from('boletas').remove([path])
+      setLoading(false)
+      setMessage(`No se pudo enviar la renovación: ${error.message}`)
+      return
+    }
+    setLoading(false)
+    setReference('')
+    setDepositDate('')
+    setReceipt(null)
+    setAcceptTerms(false)
+    setAcceptService(false)
+    setMessage('')
+    setRenewItem(null)
+    setModal('my_subs')
+    showToast('Renovación enviada. Te avisaremos cuando se apruebe.')
+    await fetchMyOrders(user.id)
   }
 
   async function approveReseller(id: string, status: 'approved' | 'rejected') {
@@ -360,7 +552,9 @@ setModal('order_done')
       name: packageName.trim(),
       detail: packageName.trim(),
       game_name: gameName.trim(),
-      category: 'Videojuegos',
+      category: newCategory,
+      contact_type: newContact,
+      duration_days: newCategory === 'Streaming' ? Number(newDuration || 30) : null,
       price: Number(price),
       reseller_price: Number(resellerPrice || price),
       active: true
@@ -399,8 +593,8 @@ setModal('order_done')
     }
   }
 
-  const games = useMemo(() => Array.from(new Set(products.map(p => p.game_name || 'Otros'))), [products])
-  const gameProducts = useMemo(() => products.filter(p => (p.game_name || 'Otros') === selectedGame), [products, selectedGame])
+  const games = useMemo(() => Array.from(new Set(products.filter(p => p.category === section).map(p => p.game_name || 'Otros'))), [products, section])
+  const gameProducts = useMemo(() => products.filter(p => p.category === section && (p.game_name || 'Otros') === selectedGame), [products, section, selectedGame])
   const pendingResellers = profiles.filter(p => p.application_status === 'pending')
   const pendingOrders = orders.filter(o => o.status === 'pending')
   const cartTotal = cart.reduce((t, item) => t + Number(isReseller ? item.product.reseller_price : item.product.price) * item.quantity, 0)
@@ -416,6 +610,52 @@ setModal('order_done')
     return Array.from(map.values()).sort((a, b) => b.total - a.total)
   }, [orders])
   const historyOrders = orders.filter(o => o.user_id === historyUser)
+  const cartContact = cart[0]?.product.contact_type ?? 'player_id'
+  const cartIsStreaming = cart[0]?.product.category === 'Streaming'
+  const itemsById = useMemo(() => {
+    const m = new Map<string, Item>()
+    for (const o of orders) for (const it of o.order_items ?? []) m.set(it.id, it)
+    return m
+  }, [orders])
+  const adminSubs = useMemo(() => {
+    const list: { item: Item; order: Order }[] = []
+    for (const o of orders) {
+      if (o.status !== 'completed') continue
+      for (const it of o.order_items ?? []) {
+        if (it.category === 'Streaming' && !it.renewal_of && it.valid_until) list.push({ item: it, order: o })
+      }
+    }
+    return list.sort((a, b) => String(a.item.valid_until).localeCompare(String(b.item.valid_until)))
+  }, [orders])
+  const mySubs = useMemo(() => {
+    const list: Item[] = []
+    for (const o of myOrders) {
+      if (o.status !== 'completed') continue
+      for (const it of o.order_items ?? []) {
+        if (it.category === 'Streaming' && !it.renewal_of && it.valid_until) list.push(it)
+      }
+    }
+    return list.sort((a, b) => String(a.valid_until).localeCompare(String(b.valid_until)))
+  }, [myOrders])
+  const myPendingRenewals = useMemo(() => {
+    const set = new Set<string>()
+    for (const o of myOrders) {
+      if (!['pending', 'payment_confirmed', 'processing'].includes(o.status)) continue
+      for (const it of o.order_items ?? []) if (it.renewal_of) set.add(it.renewal_of)
+    }
+    return set
+  }, [myOrders])
+  const contactRows = useMemo(() => {
+    const m = new Map<string, { key: string; category: string; game: string; contact: string }>()
+    for (const pr of products) {
+      const game = pr.game_name || 'Otros'
+      const key = `${pr.category}|${game}`
+      if (!m.has(key)) m.set(key, { key, category: pr.category, game, contact: pr.contact_type })
+    }
+    return Array.from(m.values())
+  }, [products])
+  const renewProduct = products.find(pr => pr.id === renewItem?.product_id) ?? null
+  const renewPrice = renewProduct ? Number(isReseller ? renewProduct.reseller_price : renewProduct.price) : 0
 
   if (!supabase) {
     return (
@@ -436,6 +676,7 @@ setModal('order_done')
           <a className="active" href="#inicio" onClick={() => setMenu(false)}>Inicio</a>
           <a href="#catalogo" onClick={() => setMenu(false)}>Catálogo</a>
           <button onClick={() => { setModal(user ? 'my_orders' : 'login'); setMenu(false) }}>Mis pedidos</button>
+          <button onClick={() => { setModal(user ? 'my_subs' : 'login'); setMenu(false) }}>Mis suscripciones</button>
         </nav>
         <div className="account">
           {user ? (
@@ -469,7 +710,7 @@ setModal('order_done')
         <section className="section catalog wrap" id="catalogo">
           <div className="section-heading">
             <div>
-              <h2>Videojuegos<span className="blue-text">.</span></h2>
+              <h2>{section}<span className="blue-text">.</span></h2>
               {!isReseller && user && (
                 <p style={{ fontSize: 12, color: '#f06675' }}>
                   <button onClick={() => { setMessage(''); setModal('reseller_apply') }} style={{ textDecoration: 'underline' }}>
@@ -580,13 +821,18 @@ setModal('order_done')
           )}           
           </div>
 
+          <div style={{ display: 'flex', gap: 10, margin: '16px 0' }}>
+            {(['Videojuegos', 'Streaming'] as const).map(sec => (
+              <button key={sec} className={section === sec ? 'button' : 'button secondary'} onClick={() => { setSection(sec); setSelectedGame(null) }}>{sec}</button>
+            ))}
+          </div>
           {!selectedGame && (
             <div className="category-grid">
               {games.length === 0 ? (
-                <p style={{ color: 'gray' }}>Todavía no hay juegos disponibles.</p>
+                <p style={{ color: 'gray' }}>Todavía no hay {section === 'Streaming' ? 'plataformas' : 'juegos'} disponibles.</p>
               ) : (
                 games.map(game => {
-                  const logo = getGameLogo(game)
+                  const logo = section === 'Videojuegos' ? getGameLogo(game) : undefined
                   return (
                     <button key={game} className="category-card" onClick={() => setSelectedGame(game)}>
                       <span
@@ -615,11 +861,11 @@ setModal('order_done')
                             }}
                           />
                         ) : (
-                          <Gamepad2 size={27} />
+                          section === 'Streaming' ? <Tv size={27} /> : <Gamepad2 size={27} />
                         )}
                       </span>
                       <h3>{game}</h3>
-                      <p>Ver paquetes de recarga</p>
+                      <p>{section === 'Streaming' ? 'Ver perfiles disponibles' : 'Ver paquetes de recarga'}</p>
                     </button>
                   )
                 })
@@ -638,6 +884,7 @@ setModal('order_done')
                     <article className="product-card" key={p.id}>
                       <div className="product-info">
                         <h3>{p.detail || p.name}</h3>
+                        {p.category === 'Streaming' && p.duration_days ? <p style={{ fontSize: 12, opacity: 0.8 }}>{p.duration_days} días</p> : null}
                         <div className="price-row">
                           <div>
                             <span className="price-caption">Precio</span>
@@ -651,12 +898,20 @@ setModal('order_done')
       return
     }
 
-    if (
-      cart.length > 0 &&
-      cart[0].product.game_name !== p.game_name
-    ) {
-      showToast('Solo puedes agregar paquetes del mismo juego al carrito.')
-      return
+    if (cart.length > 0) {
+      const first = cart[0].product
+      if (first.category !== p.category) {
+        showToast('No puedes mezclar videojuegos y streaming en el mismo pedido.')
+        return
+      }
+      if (first.contact_type !== p.contact_type) {
+        showToast('Estos paquetes piden datos distintos. Haz pedidos separados.')
+        return
+      }
+      if (p.category === 'Videojuegos' && first.game_name !== p.game_name) {
+        showToast('Solo puedes agregar paquetes del mismo juego al carrito.')
+        return
+      }
     }
 
     addToCart(p)
@@ -692,29 +947,73 @@ setModal('order_done')
 
             <div className="admin-form" style={{ marginTop: 20 }}>
               <h3>Pedidos pendientes</h3>
-              <div style={{ maxHeight: 400, overflowY: 'auto' }}>
-                {pendingOrders.map(o => (
-                  <div key={o.id} className="admin-product-row" style={{ backgroundColor: '#222', padding: 10, margin: '5px 0', flexDirection: 'column', alignItems: 'flex-start' }}>
-                    <p><strong>Cliente:</strong> {o.profiles?.full_name || o.user_id}</p>
-<p><strong>Juego:</strong> {o.order_items?.[0]?.game_name || o.products?.game_name || '—'}</p>
-<div style={{ background: '#111', padding: 8, borderRadius: 6, width: '100%' }}>
-  <strong>Recargar:</strong>
-  {(o.order_items ?? []).map((it, i) => (
-    <p key={i}>{it.quantity} × {it.product_name} — {money(Number(it.line_total))}</p>
-  ))}
-  {(!o.order_items || o.order_items.length === 0) && <p>{o.products?.detail || '—'}</p>}
-</div>
-                    <p><strong>ID jugador:</strong> {o.player_id} | <strong>Monto:</strong> {money(Number(o.amount))} | <strong>NC:</strong> {o.reference_nc}</p>
-                    <p><strong>Fecha depósito:</strong> {o.deposit_date || '—'}</p>
-                    {o.receipt_signed_url ? (
-                      <a href={o.receipt_signed_url} target="_blank" rel="noreferrer" style={{ color: '#00a3ff', textDecoration: 'underline' }}>Ver comprobante</a>
-                    ) : <p>No se pudo crear enlace para la boleta.</p>}
-                    <div style={{ marginTop: 10 }}>
-                      <button className="button small" onClick={() => { void updateOrder(o.id, 'completed') }}>Aprobar y completar</button>
-                      <button className="button small" style={{ marginLeft: 5 }} onClick={() => { void updateOrder(o.id, 'rejected') }}>Rechazar</button>
+              <div style={{ maxHeight: '75dvh', overflowY: 'auto' }}>
+                {pendingOrders.map(o => {
+                  const items = o.order_items ?? []
+                  const first = items[0]
+                  const isWa = first?.contact_type === 'whatsapp'
+                  const isStream = first?.category === 'Streaming'
+                  const renewals = items.filter(it => it.renewal_of)
+                  const toDeliver = items.filter(it => it.category === 'Streaming' && !it.renewal_of)
+                  return (
+                    <div key={o.id} className="admin-product-row" style={{ backgroundColor: '#222', padding: 10, margin: '5px 0', flexDirection: 'column', alignItems: 'flex-start', gap: 6 }}>
+                      <p><strong>Cliente:</strong> {o.profiles?.full_name || o.user_id}</p>
+                      <p><strong>{isStream ? 'Plataforma' : 'Juego'}:</strong> {first?.game_name || o.products?.game_name || '—'}{renewals.length > 0 ? ' (RENOVACIÓN)' : ''}</p>
+                      <div style={{ background: '#111', padding: 8, borderRadius: 6, width: '100%' }}>
+                        <strong>{isStream ? 'Entregar:' : 'Recargar:'}</strong>
+                        {items.map((it, i) => (
+                          <p key={i}>{it.quantity} × {it.product_name}{it.renewal_of ? ' (renovación)' : ''} — {money(Number(it.line_total))}</p>
+                        ))}
+                        {items.length === 0 && <p>{o.products?.detail || '—'}</p>}
+                      </div>
+                      {isWa ? (
+                        <p>
+                          <strong>WhatsApp:</strong> {o.player_id}{' '}
+                          <a href={waLinkTo(o.player_id, `Hola ${o.profiles?.full_name || ''}, te escribimos de Samuel Store por tu pedido.`)} target="_blank" rel="noreferrer" style={{ color: '#25d366', textDecoration: 'underline' }}>Escribir</a>
+                        </p>
+                      ) : (
+                        <p><strong>ID jugador:</strong> {o.player_id}</p>
+                      )}
+                      <p><strong>Monto:</strong> {money(Number(o.amount))} | <strong>NC:</strong> {o.reference_nc}</p>
+                      <p><strong>Fecha depósito:</strong> {o.deposit_date || '—'}</p>
+                      {o.receipt_signed_url ? (
+                        <a href={o.receipt_signed_url} target="_blank" rel="noreferrer" style={{ color: '#00a3ff', textDecoration: 'underline' }}>Ver comprobante</a>
+                      ) : <p>No se pudo crear enlace para la boleta.</p>}
+                      {renewals.map(it => {
+                        const orig = it.renewal_of ? itemsById.get(it.renewal_of) : undefined
+                        return (
+                          <p key={it.id} style={{ color: '#ffcc00' }}>
+                            Vence actualmente: {fmtDate(orig?.valid_until)}. Al aprobar se suman {it.duration_days ?? 30} días.
+                          </p>
+                        )
+                      })}
+                      {toDeliver.map(it => {
+                        const d = getDel(it)
+                        return (
+                          <div key={it.id} style={{ background: '#111', padding: 8, borderRadius: 6, width: '100%', display: 'flex', flexDirection: 'column', gap: 6 }}>
+                            <strong>{it.game_name} — datos de la cuenta</strong>
+                            <input placeholder="Correo de la cuenta" value={d.email} onChange={e => setDel(it, { email: e.target.value })} />
+                            <input placeholder="Contraseña" value={d.password} onChange={e => setDel(it, { password: e.target.value })} />
+                            <input placeholder="Perfil (Ej. P2)" value={d.profile} onChange={e => setDel(it, { profile: e.target.value })} />
+                            <input placeholder="PIN (opcional)" value={d.pin} onChange={e => setDel(it, { pin: e.target.value })} />
+                            <label>Válido hasta<input type="date" value={d.valid_until} onChange={e => setDel(it, { valid_until: e.target.value })} /></label>
+                            {d.email && d.password && d.profile && d.valid_until && (
+                              <a className="button small secondary" href={waLinkTo(o.player_id, deliveryText(it.game_name, d))} target="_blank" rel="noreferrer">Enviar cuenta por WhatsApp</a>
+                            )}
+                          </div>
+                        )
+                      })}
+                      <div style={{ marginTop: 10 }}>
+                        {toDeliver.length > 0 ? (
+                          <button className="button small" onClick={() => { void completeDelivery(o) }}>Entregar y completar</button>
+                        ) : (
+                          <button className="button small" onClick={() => { void updateOrder(o.id, 'completed') }}>{renewals.length > 0 ? 'Aprobar renovación' : 'Aprobar y completar'}</button>
+                        )}
+                        <button className="button small" style={{ marginLeft: 5 }} onClick={() => { void updateOrder(o.id, 'rejected') }}>Rechazar</button>
+                      </div>
                     </div>
-                  </div>
-                ))}
+                  )
+                })}
                 {pendingOrders.length === 0 && <p>No hay pedidos pendientes.</p>}
               </div>
               <button className="button secondary small" onClick={() => { void refreshAdmin() }}><RefreshCw size={14} /> Actualizar</button>
@@ -722,9 +1021,11 @@ setModal('order_done')
 
             <div className="admin-form" style={{ marginTop: 20 }}>
               <h3>Crear juego / paquete</h3>
-              <label>Categoría principal<select value="Videojuegos" disabled><option>Videojuegos</option></select></label>
-              <input placeholder="Nombre del juego (Ej. Free Fire)" value={gameName} onChange={e => setGameName(e.target.value)} />
-              <input placeholder="Nombre del paquete (Ej. 1000 Diamantes)" value={packageName} onChange={e => setPackageName(e.target.value)} />
+              <label>Sección<select value={newCategory} onChange={e => { const v = e.target.value as 'Videojuegos' | 'Streaming'; setNewCategory(v); setNewContact(v === 'Streaming' ? 'whatsapp' : 'player_id') }}><option value="Videojuegos">Videojuegos</option><option value="Streaming">Streaming</option></select></label>
+              <label>El cliente debe dar<select value={newContact} onChange={e => setNewContact(e.target.value as 'player_id' | 'whatsapp')}><option value="player_id">ID de jugador</option><option value="whatsapp">Número de WhatsApp</option></select></label>
+              {newCategory === 'Streaming' && <input type="number" min="1" placeholder="Duración en días (Ej. 30)" value={newDuration} onChange={e => setNewDuration(e.target.value)} />}
+              <input placeholder={newCategory === 'Streaming' ? 'Plataforma (Ej. Disney)' : 'Nombre del juego (Ej. Free Fire)'} value={gameName} onChange={e => setGameName(e.target.value)} />
+              <input placeholder={newCategory === 'Streaming' ? 'Perfil (Ej. Perfil 1 pantalla)' : 'Nombre del paquete (Ej. 1000 Diamantes)'} value={packageName} onChange={e => setPackageName(e.target.value)} />
               <input type="number" min="0.01" step="0.01" placeholder="Precio cliente (Q)" value={price} onChange={e => setPrice(e.target.value)} />
               <input type="number" min="0" step="0.01" placeholder="Precio revendedor (Q)" value={resellerPrice} onChange={e => setResellerPrice(e.target.value)} />
               <button className="button" disabled={loading} onClick={() => { void saveProduct() }}>Guardar producto</button>
@@ -738,6 +1039,42 @@ setModal('order_done')
               <button className="button" disabled={loading} onClick={() => { void saveBank() }}>Guardar cuenta</button>
               <ul>{banks.map(b => <li key={b.id}>{b.bank_name} — {b.account_number} ({b.account_holder})</li>)}</ul>
             </div>
+            <div className="admin-form" style={{ marginTop: 20 }}>
+              <h3>Suscripciones de streaming</h3>
+              <div style={{ maxHeight: '50dvh', overflowY: 'auto' }}>
+                {adminSubs.map(({ item, order }) => {
+                  const left = item.valid_until ? daysLeft(item.valid_until) : 0
+                  const d: Delivery = { email: item.delivery_email ?? '', password: item.delivery_password ?? '', profile: item.delivery_profile ?? '', pin: item.delivery_pin ?? '', valid_until: item.valid_until ?? '' }
+                  return (
+                    <div key={item.id} style={{ backgroundColor: '#222', padding: 10, margin: '5px 0', borderRadius: 8 }}>
+                      <strong>{item.game_name} - {item.delivery_profile || '—'}</strong>
+                      <p>{order.profiles?.full_name || 'Cliente'} | WhatsApp: {order.player_id}</p>
+                      <p style={{ color: left <= 5 ? '#f06675' : undefined }}>Vence: {fmtDate(item.valid_until)} ({left < 0 ? `vencido hace ${-left} d` : `faltan ${left} d`})</p>
+                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 6 }}>
+                        <a className="button small secondary" href={waLinkTo(order.player_id, `Hola, tu ${item.game_name} - ${item.delivery_profile || ''} vence el ${fmtDate(item.valid_until)}. Puedes renovar desde la tienda con 5 días de anticipación.`)} target="_blank" rel="noreferrer">Recordar</a>
+                        <a className="button small secondary" href={waLinkTo(order.player_id, deliveryText(item.game_name, d))} target="_blank" rel="noreferrer">Reenviar cuenta</a>
+                      </div>
+                    </div>
+                  )
+                })}
+                {adminSubs.length === 0 && <p>Aún no hay suscripciones entregadas.</p>}
+              </div>
+            </div>
+
+            <div className="admin-form" style={{ marginTop: 20 }}>
+              <h3>Qué datos pide cada juego o plataforma</h3>
+              {contactRows.map(r => (
+                <div key={r.key} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10, margin: '6px 0' }}>
+                  <span>{r.game} <small>({r.category})</small></span>
+                  <select value={r.contact} onChange={e => { void setGameContact(r.category, r.game, e.target.value) }}>
+                    <option value="player_id">ID de jugador</option>
+                    <option value="whatsapp">WhatsApp</option>
+                  </select>
+                </div>
+              ))}
+              {contactRows.length === 0 && <p>Aún no hay productos.</p>}
+            </div>
+
             <div className="admin-form" style={{ marginTop: 20 }}>
               <h3>Pedidos por usuario</h3>
               {usersWithOrders.map(u => (
@@ -897,9 +1234,9 @@ setModal('order_done')
                 {historyOrders.map(o => (
                   <div key={o.id} style={{ borderBottom: '1px solid #333', padding: '12px 0' }}>
                     <p><strong>{o.order_items?.[0]?.game_name || o.products?.game_name || 'Pedido'}</strong> — {new Date(o.created_at).toLocaleDateString()}</p>
-                    <p>ID jugador: <strong>{o.player_id}</strong></p>
+                    <p>{o.order_items?.[0]?.contact_type === 'whatsapp' ? 'WhatsApp' : 'ID jugador'}: <strong>{o.player_id}</strong></p>
                     {(o.order_items ?? []).map((it, i) => (
-                      <p key={i}>{it.quantity} × {it.product_name} — {money(Number(it.line_total))}</p>
+                      <p key={i}>{it.quantity} × {it.product_name}{it.renewal_of ? ' (renovación)' : ''} — {money(Number(it.line_total))}</p>
                     ))}
                     {(!o.order_items || o.order_items.length === 0) && <p>{o.products?.detail || '—'}</p>}
                     <p>Total: <strong>{money(Number(o.amount))}</strong> | NC: {o.reference_nc}</p>
@@ -914,10 +1251,93 @@ setModal('order_done')
               <button className="button secondary small" onClick={() => setModal(null)}>Cerrar</button>
             </>
           )}
+          {modal === 'my_subs' && (
+            <>
+              <DialogHeader>
+                <DialogTitle>Mis suscripciones</DialogTitle>
+                <DialogDescription>Tus perfiles de streaming y cuánto tiempo les queda.</DialogDescription>
+              </DialogHeader>
+              <div style={{ maxHeight: '60dvh', overflowY: 'auto' }}>
+                {mySubs.map(it => {
+                  const left = daysLeft(it.valid_until ?? todayGT())
+                  const waiting = myPendingRenewals.has(it.id)
+                  return (
+                    <div key={it.id} style={{ borderBottom: '1px solid #333', padding: '12px 0' }}>
+                      <p><strong>{it.game_name} - {it.delivery_profile}</strong></p>
+                      <p>📩 Correo: {it.delivery_email}</p>
+                      <p>🔑 Contraseña: {it.delivery_password}</p>
+                      <p>👥 Perfil: {it.delivery_profile}</p>
+                      {it.delivery_pin && <p>🚨 Pin: {it.delivery_pin}</p>}
+                      <p>Válido hasta {fmtDate(it.valid_until)}</p>
+                      {left > 5 && <p>Faltan {left} días. Podrás renovar cuando falten 5 días.</p>}
+                      {left >= 1 && left <= 5 && (
+                        <>
+                          <p style={{ color: 'orange' }}>Faltan {left} {left === 1 ? 'día' : 'días'}.</p>
+                          {waiting ? (
+                            <p>Renovación en revisión.</p>
+                          ) : (
+                            <button className="button small" onClick={() => { setRenewItem(it); setReference(''); setDepositDate(''); setReceipt(null); setAcceptTerms(false); setAcceptService(false); setMessage(''); setModal('renew') }}>Renovar</button>
+                          )}
+                        </>
+                      )}
+                      {left === 0 && <p style={{ color: 'red' }}>Vence hoy. Ya no se puede renovar.</p>}
+                      {left < 0 && <p style={{ color: 'red' }}>Vencido. Escríbenos por WhatsApp para un nuevo servicio.</p>}
+                    </div>
+                  )
+                })}
+                {mySubs.length === 0 && <p>Aún no tienes suscripciones activas.</p>}
+                <div style={{ marginTop: 12 }}><StreamingConditions /></div>
+              </div>
+            </>
+          )}
+          {modal === 'renew' && renewItem && (
+            <>
+              <DialogHeader>
+                <DialogTitle>Renovar {renewItem.game_name} - {renewItem.delivery_profile}</DialogTitle>
+                <DialogDescription>Deposita el monto y adjunta tu comprobante.</DialogDescription>
+              </DialogHeader>
+              <div className="auth-form">
+                <p>Vence el {fmtDate(renewItem.valid_until)}. La renovación suma {renewItem.duration_days ?? renewProduct?.duration_days ?? 30} días.</p>
+                <p><strong>Total a depositar: {money(renewPrice)}</strong></p>
+                <div style={{ backgroundColor: '#003366', padding: 15, borderRadius: 8, margin: '10px 0' }}>
+                  <h4 style={{ margin: '0 0 10px' }}>Datos para depositar</h4>
+                  {banks.length === 0 && <p>No hay cuentas bancarias disponibles.</p>}
+                  {banks.map(b => (
+                    <div key={b.id} style={{ marginBottom: 10 }}>
+                      <p>Banco: <strong>{b.bank_name}</strong></p>
+                      <p>Cuenta: <strong>{b.account_number}</strong></p>
+                      <p>Titular: <strong>{b.account_holder}</strong></p>
+                    </div>
+                  ))}
+                  <p style={{ fontSize: 11, color: '#ffcc00' }}>Deposita el monto exacto y sube el comprobante.</p>
+                </div>
+                <label>Referencia NC<input value={reference} onChange={e => setReference(e.target.value)} /></label>
+                <label>Fecha del depósito<input type="date" value={depositDate} onChange={e => setDepositDate(e.target.value)} /></label>
+                <label style={{ display: 'flex', alignItems: 'center', gap: 10, background: '#222', padding: 10, borderRadius: 5 }}>
+                  <Upload size={20} />{receipt ? receipt.name : 'Seleccionar comprobante'}
+                  <input type="file" style={{ display: 'none' }} accept="image/jpeg,image/png,image/webp,application/pdf" onChange={e => setReceipt(e.target.files?.[0] ?? null)} />
+                </label>
+                <StreamingConditions />
+                <label style={{ display: 'flex', flexDirection: 'row', gap: 10, alignItems: 'center', fontSize: 14 }}>
+                  <input type="checkbox" checked={acceptService} onChange={e => setAcceptService(e.target.checked)} style={{ width: 22, height: 22, minWidth: 22, margin: 0, padding: 0, flex: '0 0 22px' }} />
+                  <span>Leí y acepto las condiciones del servicio</span>
+                </label>
+                <label style={{ display: 'flex', flexDirection: 'row', gap: 10, alignItems: 'center', fontSize: 14 }}>
+                  <input type="checkbox" checked={acceptTerms} onChange={e => setAcceptTerms(e.target.checked)} style={{ width: 22, height: 22, minWidth: 22, margin: 0, padding: 0, flex: '0 0 22px' }} />
+                  <span>Acepto los términos y condiciones</span>
+                </label>
+                <div style={{ position: 'sticky', bottom: 0, background: '#0b1320', padding: '10px 0', zIndex: 5 }}>
+                  {message && <p role="status" style={{ color: '#00a3ff', marginBottom: 8 }}>{message}</p>}
+                  <button className="button" style={{ width: '100%' }} disabled={loading} onClick={() => { void submitRenewal() }}>{loading ? 'Enviando...' : 'Enviar renovación'}</button>
+                </div>
+              </div>
+            </>
+          )}
           {modal === 'order_done' && (
   <>
     <DialogHeader><DialogTitle>¡Pedido enviado!</DialogTitle><DialogDescription>Recibimos tu comprobante. Para que sea más rápido, envíanos el detalle por WhatsApp.</DialogDescription></DialogHeader>
     <div className="auth-form">
+      {lastStreaming && <StreamingConditions />}
       <a className="button" href={waLink} target="_blank" rel="noreferrer">Enviar pedido por WhatsApp</a>
       <button className="button secondary small" onClick={() => setModal('my_orders')}>Ver mis pedidos</button>
     </div>
@@ -930,9 +1350,9 @@ setModal('order_done')
                 {myOrders.map(o => (
                   <div key={o.id} style={{ borderBottom: '1px solid #333', padding: '10px 0' }}>
                     <p><strong>{o.order_items?.[0]?.game_name || o.products?.game_name || 'Pedido'}</strong></p>
-{(o.order_items ?? []).map((it, i) => (<p key={i}>{it.quantity} × {it.product_name} — {money(Number(it.line_total))}</p>))}
+{(o.order_items ?? []).map((it, i) => (<p key={i}>{it.quantity} × {it.product_name}{it.renewal_of ? ' (renovación)' : ''} — {money(Number(it.line_total))}</p>))}
 {(!o.order_items || o.order_items.length === 0) && <p>{o.products?.detail || '—'}</p>}
-                    <p>ID jugador: <strong>{o.player_id}</strong></p>
+                    <p>{o.order_items?.[0]?.contact_type === 'whatsapp' ? 'WhatsApp' : 'ID jugador'}: <strong>{o.player_id}</strong></p>
 <p>Total: <strong>{money(Number(o.amount))}</strong> | {new Date(o.created_at).toLocaleDateString()}</p>
                     <p>Estado: <strong style={{ color: o.status === 'completed' ? 'green' : o.status === 'rejected' ? 'red' : 'orange' }}>
                       {o.status === 'completed' ? 'Completado' : o.status === 'rejected' ? 'Rechazado' : o.status === 'payment_confirmed' ? 'Pago confirmado' : o.status === 'processing' ? 'En proceso' : 'En revisión'}
@@ -960,7 +1380,8 @@ setModal('order_done')
   })}
   <p><strong>Total a depositar: {money(cart.reduce((t, item) => t + Number(isReseller ? item.product.reseller_price : item.product.price) * item.quantity, 0))}</strong></p>
 </div>
-                <label>ID de jugador<input value={playerId} onChange={e => setPlayerId(e.target.value)} placeholder="Ej. 12345678" /></label>
+                <label>{cartContact === 'whatsapp' ? 'Tu número de WhatsApp' : 'ID de jugador'}<input value={playerId} inputMode={cartContact === 'whatsapp' ? 'tel' : undefined} onChange={e => setPlayerId(e.target.value)} placeholder={cartContact === 'whatsapp' ? 'Ej. 50212345678' : 'Ej. 12345678'} /></label>
+                {cartContact === 'whatsapp' && <p style={{ fontSize: 12, opacity: 0.8 }}>Por este número te enviaremos tu pedido. Escríbelo con código de país (Guatemala: 502).</p>}
                 <div style={{ backgroundColor: '#003366', padding: 15, borderRadius: 8, margin: '10px 0' }}>
                   <h4 style={{ margin: '0 0 10px' }}>Datos para depositar</h4>
                   {banks.length === 0 && <p>No hay cuentas bancarias disponibles.</p>}
@@ -980,6 +1401,15 @@ setModal('order_done')
                   <Upload size={20} />{receipt ? receipt.name : 'Seleccionar comprobante'}
                   <input type="file" style={{ display: 'none' }} accept="image/jpeg,image/png,image/webp,application/pdf" onChange={e => setReceipt(e.target.files?.[0] ?? null)} />
                 </label>
+                {cartIsStreaming && (
+                  <>
+                    <StreamingConditions />
+                    <label style={{ display: 'flex', flexDirection: 'row', gap: 10, alignItems: 'center', fontSize: 14 }}>
+                      <input type="checkbox" checked={acceptService} onChange={e => setAcceptService(e.target.checked)} style={{ width: 22, height: 22, minWidth: 22, margin: 0, padding: 0, flex: '0 0 22px' }} />
+                      <span>Leí y acepto las condiciones del servicio</span>
+                    </label>
+                  </>
+                )}
                 <label style={{ display: 'flex', flexDirection: 'row', gap: 10, alignItems: 'center', fontSize: 14 }}>
   <input type="checkbox" checked={acceptTerms} onChange={e => setAcceptTerms(e.target.checked)} style={{ width: 22, height: 22, minWidth: 22, margin: 0, padding: 0, flex: '0 0 22px' }} />
   <span>Acepto los <button type="button" onClick={() => setModal('terms')} style={{ textDecoration: 'underline' }}>términos y condiciones</button></span>
