@@ -69,6 +69,24 @@ const PRIVACY_SECTIONS: [string, string][] = [
   ['12. Cambios', 'Podemos actualizar esta política. La versión vigente es la publicada en la tienda.'],
 ]
 
+const RESELLER_MIN = 200
+
+const HOW_TO: [string, string][] = [
+  ['Elige', 'Entra a Videojuegos o Streaming y agrega al carrito lo que necesitas.'],
+  ['Paga', 'Haz el depósito a una de nuestras cuentas por el monto exacto y sube tu comprobante.'],
+  ['Recibe', 'Verificamos tu pago y hacemos tu recarga, o te enviamos tu cuenta por WhatsApp.'],
+]
+
+const FAQ_ITEMS: [string, string][] = [
+  ['¿Cuánto tarda mi pedido?', 'Verificamos tu pago y hacemos la entrega de forma manual. Si tienes prisa, escríbenos por WhatsApp para confirmar el tiempo.'],
+  ['¿Cómo pago?', 'Por depósito bancario. Las cuentas aparecen al finalizar tu pedido. Deposita el monto exacto y sube tu comprobante.'],
+  ['¿Qué pasa si me equivoco de ID?', 'Escribe tu ID con mucho cuidado. Si la recarga se hace a un ID equivocado por un error del cliente, no se puede reembolsar.'],
+  ['¿Cómo funcionan los perfiles de streaming?', 'Recibes por WhatsApp un perfil de uso personal con su PIN. Cada perfil es para un solo dispositivo. También puedes ver tus datos y los días que te faltan en Mis suscripciones.'],
+  ['¿Puedo renovar mi streaming?', 'Sí, desde Mis suscripciones. El botón se activa de 5 a 1 días antes del vencimiento.'],
+  ['¿Cómo ser revendedor?', 'Inicia sesión y toca "Solicita ser revendedor". Debes ser mayor de 18 años y estimar ventas de al menos Q200 al mes.'],
+  ['¿Cómo contacto a Samuel Store?', 'Por WhatsApp al +502 5456 0623 o en @SamuelStoreGt.'],
+]
+
 function getGameLogo(game: string): string | undefined {
   return GAME_LOGOS[game.toLowerCase().replace(/[\s_-]/g, '')]
 }
@@ -77,6 +95,17 @@ const ITEM_FIELDS = 'id,game_name,product_name,product_id,player_id,quantity,uni
 
 function todayGT(): string {
   return new Date().toLocaleDateString('en-CA', { timeZone: 'America/Guatemala' })
+}
+function gtDate(iso: string): string {
+  return new Date(iso).toLocaleDateString('en-CA', { timeZone: 'America/Guatemala' })
+}
+function prevMonthKey(k: string): string {
+  const [y, m] = k.split('-').map(Number)
+  return new Date(Date.UTC(y, m - 2, 1)).toISOString().slice(0, 7)
+}
+function csvCell(v: unknown): string {
+  const t = String(v ?? '')
+  return /[";\n\r]/.test(t) ? `"${t.replace(/"/g, '""')}"` : t
 }
 function daysLeft(validUntil: string): number {
   const a = Date.parse(`${validUntil.slice(0, 10)}T00:00:00Z`)
@@ -133,13 +162,13 @@ function StreamingConditions() {
 
 type Product = { id: string; name: string; detail: string; game_name: string | null; category: Category; price: number; reseller_price: number; active: boolean; contact_type: string; duration_days: number | null; image_url?: string | null }
 type Bank = { id: string; bank_name: string; account_number: string; account_holder: string; active: boolean }
-type Profile = { id: string; full_name: string; role: string; application_status: string }
-type Order = { id: string; user_id: string; product_id: string | null; player_id: string; amount: number; reference_nc: string; deposit_date: string | null; receipt_path: string | null; status: string; created_at: string; products?: { detail?: string; game_name?: string } | null; order_items?: Item[] | null; profiles?: { full_name?: string } | null; receipt_signed_url?: string | null }
+type Profile = { id: string; full_name: string; role: string; application_status: string; age?: number | null; expected_sales?: number | null }
+type Order = { id: string; user_id: string; product_id: string | null; player_id: string; amount: number; reference_nc: string; deposit_date: string | null; receipt_path: string | null; status: string; created_at: string; completed_at?: string | null; products?: { detail?: string; game_name?: string } | null; order_items?: Item[] | null; profiles?: { full_name?: string } | null; receipt_signed_url?: string | null }
 
 function Home() {
   const [selectedGame, setSelectedGame] = useState<string | null>(null)
   const [menu, setMenu] = useState(false)
-  const [modal, setModal] = useState<'login' | 'register' | 'reseller_apply' | 'checkout'| 'my_orders' | 'terms' | 'order_done' | 'legal' | 'privacy' | 'user_orders' | 'my_subs' | 'renew' | null>(null)
+  const [modal, setModal] = useState<'login' | 'register' | 'reseller_apply' | 'checkout'| 'my_orders' | 'terms' | 'order_done' | 'legal' | 'privacy' | 'user_orders' | 'my_subs' | 'renew' | 'forgot' | 'new_password' | null>(null)
   const [user, setUser] = useState<User | null>(null)
   const [isAdmin, setIsAdmin] = useState(false)
   const [isReseller, setIsReseller] = useState(false)
@@ -152,6 +181,7 @@ function Home() {
   const [myOrders, setMyOrders] = useState<Order[]>([])
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
+  const [newPass, setNewPass] = useState('')
   const [fullName, setFullName] = useState('')
   const [resAge, setResAge] = useState('')
   const [expectedSales, setExpectedSales] = useState('')
@@ -226,7 +256,7 @@ const { data, error } = await supabase.from('orders').select(`*, products(detail
   async function refreshAdmin() {
     if (!supabase) return
     const [p, b, o, ap] = await Promise.all([
-      supabase.from('profiles').select('id,full_name,role,application_status'),
+      supabase.from('profiles').select('id,full_name,role,application_status,age,expected_sales'),
       supabase.from('bank_accounts').select('id,bank_name,account_number,account_holder,active')
         .eq('active', true),
 supabase.from('orders').select(`*, products(detail,game_name), order_items(${ITEM_FIELDS}), profiles(full_name)`).order('created_at', { ascending: false }),
@@ -282,6 +312,7 @@ if (p.error || b.error || o.error) {
     })
     const { data: authListener } = supabase.auth.onAuthStateChange((_event, session) => {
       const current = session?.user ?? null
+      if (_event === 'PASSWORD_RECOVERY') { setMessage(''); setModal('new_password') }
       setUser(current)
       if (current) window.setTimeout(() => { void loadUserRole(current) }, 0)
       else {
@@ -641,6 +672,80 @@ setModal('order_done')
     await refreshAdmin()
   }
 
+  async function sendReset() {
+    if (!supabase) return
+    if (!email.trim()) {
+      setMessage('Escribe tu correo.')
+      return
+    }
+    setLoading(true)
+    const { error } = await supabase.auth.resetPasswordForEmail(email.trim(), { redirectTo: window.location.origin })
+    setLoading(false)
+    setMessage(error ? error.message : 'Si ese correo tiene cuenta, te enviamos un enlace para cambiar tu contraseña. Revisa también la carpeta de spam.')
+  }
+
+  async function savePassword() {
+    if (!supabase) return
+    if (newPass.length < 8) {
+      setMessage('La contraseña debe tener al menos 8 caracteres.')
+      return
+    }
+    setLoading(true)
+    const { error } = await supabase.auth.updateUser({ password: newPass })
+    setLoading(false)
+    if (error) {
+      setMessage(error.message)
+      return
+    }
+    setNewPass('')
+    setMessage('')
+    setModal(null)
+    showToast('Contraseña actualizada')
+  }
+
+  function downloadOrdersCsv() {
+    const header = ['Fecha pedido', 'Cliente', 'Estado', 'Sección', 'Plataforma o juego', 'Paquete', 'Cantidad', 'Precio unitario', 'Total línea', 'ID o WhatsApp', 'Referencia NC', 'Fecha depósito', 'Total pedido', 'Perfil', 'Vence', 'Renovación']
+    const statusEs: Record<string, string> = { completed: 'Completado', rejected: 'Rechazado', pending: 'En revisión', payment_confirmed: 'Pago confirmado', processing: 'En proceso', cancelled: 'Cancelado' }
+    const rows: string[][] = []
+    for (const o of orders) {
+      const items: (Item | null)[] = o.order_items && o.order_items.length > 0 ? o.order_items : [null]
+      for (const it of items) {
+        rows.push([
+          gtDate(o.created_at),
+          o.profiles?.full_name || o.user_id,
+          statusEs[o.status] || o.status,
+          it?.category || '',
+          it?.game_name || o.products?.game_name || '',
+          it?.product_name || o.products?.detail || '',
+          String(it?.quantity ?? 1),
+          it ? Number(it.unit_price).toFixed(2) : '',
+          it ? Number(it.line_total).toFixed(2) : '',
+          it?.player_id || o.player_id,
+          o.reference_nc,
+          o.deposit_date || '',
+          Number(o.amount).toFixed(2),
+          it?.delivery_profile || '',
+          it?.valid_until || '',
+          it?.renewal_of ? 'Sí' : ''
+        ])
+      }
+    }
+    const csv = '\ufeff' + [header, ...rows].map(r => r.map(csvCell).join(';')).join('\r\n')
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' })
+    const a = document.createElement('a')
+    a.href = URL.createObjectURL(blob)
+    a.download = `pedidos-samuel-store-${todayGT()}.csv`
+    document.body.appendChild(a)
+    a.click()
+    a.remove()
+    URL.revokeObjectURL(a.href)
+  }
+
+  async function removeReseller(r: Profile) {
+    if (!window.confirm(`¿Quitar a ${r.full_name || 'este usuario'} del programa de revendedores? Volverá a precios de cliente.`)) return
+    await approveReseller(r.id, 'rejected')
+  }
+
   async function approveReseller(id: string, status: 'approved' | 'rejected') {
     if (!supabase || !isAdmin) return
     const { error } = await supabase.from('profiles').update({
@@ -725,6 +830,39 @@ setModal('order_done')
   const games = useMemo(() => Array.from(new Set(products.filter(p => p.category === section).map(p => p.game_name || 'Otros'))), [products, section])
   const gameProducts = useMemo(() => products.filter(p => p.category === section && (p.game_name || 'Otros') === selectedGame), [products, section, selectedGame])
   const pendingResellers = profiles.filter(p => p.application_status === 'pending')
+  const resellers = profiles.filter(p => p.role === 'reseller')
+  const salesStats = useMemo(() => {
+    const nowMonth = gtDate(new Date().toISOString()).slice(0, 7)
+    const prevMonth = prevMonthKey(nowMonth)
+    let total = 0
+    let month = 0
+    let pending = 0
+    let completedCount = 0
+    const byMonth = new Map<string, number>()
+    const byUserMonth = new Map<string, { total: number; count: number }>()
+    const byUserPrev = new Map<string, { total: number; count: number }>()
+    for (const o of orders) {
+      const amt = Number(o.amount) || 0
+      if (o.status === 'completed') {
+        const m = gtDate(o.completed_at || o.created_at).slice(0, 7)
+        total += amt
+        completedCount += 1
+        byMonth.set(m, (byMonth.get(m) ?? 0) + amt)
+        const target = m === nowMonth ? byUserMonth : m === prevMonth ? byUserPrev : null
+        if (m === nowMonth) month += amt
+        if (target) {
+          const u = target.get(o.user_id) ?? { total: 0, count: 0 }
+          u.total += amt
+          u.count += 1
+          target.set(o.user_id, u)
+        }
+      } else if (o.status === 'pending') {
+        pending += amt
+      }
+    }
+    const months = Array.from(byMonth.entries()).sort((a, b) => b[0].localeCompare(a[0])).slice(0, 6)
+    return { total, month, pending, completedCount, months, byUserMonth, byUserPrev }
+  }, [orders])
   const pendingOrders = orders.filter(o => o.status === 'pending')
   const cartTotal = cart.reduce((t, item) => t + Number(isReseller ? item.product.reseller_price : item.product.price) * item.quantity, 0)
   useEffect(() => { setDepositAmount(String(cartTotal)) }, [cartTotal])
@@ -815,6 +953,7 @@ setModal('order_done')
         <nav className={menu ? 'navigation open' : 'navigation'}>
           <a className="active" href="#inicio" onClick={() => setMenu(false)}>Inicio</a>
           <a href="#catalogo" onClick={() => setMenu(false)}>Catálogo</a>
+          <a href="#ayuda" onClick={() => setMenu(false)}>Ayuda</a>
           <button onClick={() => { setModal(user ? 'my_orders' : 'login'); setMenu(false) }}>Mis pedidos</button>
           <button onClick={() => { setModal(user ? 'my_subs' : 'login'); setMenu(false) }}>Mis suscripciones</button>
         </nav>
@@ -1067,14 +1206,70 @@ setModal('order_done')
             </div>
           )}
         </section>
+        <section className="section wrap" id="ayuda">
+          <div className="section-heading"><div><h2>Cómo comprar<span className="blue-text">.</span></h2></div></div>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 12 }}>
+            {HOW_TO.map(([title, text], i) => (
+              <div key={title} style={{ background: '#0b1320', border: '1px solid #1b2a3a', borderRadius: 12, padding: 16 }}>
+                <strong style={{ color: '#00a3ff' }}>Paso {i + 1}</strong>
+                <h3>{title}</h3>
+                <p style={{ fontSize: 14, opacity: 0.85 }}>{text}</p>
+              </div>
+            ))}
+          </div>
+          <h3 style={{ marginTop: 24 }}>Preguntas frecuentes</h3>
+          {FAQ_ITEMS.map(([q, a]) => (
+            <details key={q} style={{ background: '#0b1320', border: '1px solid #1b2a3a', borderRadius: 12, padding: '12px 16px', margin: '8px 0' }}>
+              <summary style={{ cursor: 'pointer', fontWeight: 600 }}>{q}</summary>
+              <p style={{ marginTop: 8, fontSize: 14, opacity: 0.85 }}>{a}</p>
+            </details>
+          ))}
+        </section>
         {isAdmin && (
           <section className="section wrap" id="admin-panel" style={{ borderTop: '2px solid #00a3ff', marginTop: 50, paddingBottom: 50 }}>
             <h2>Panel de administración</h2>
             <div className="admin-form" style={{ marginTop: 20 }}>
+              <h3>Ventas</h3>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+                <div style={{ background: '#222', padding: 10, borderRadius: 8 }}><p style={{ fontSize: 12, opacity: 0.8 }}>Total vendido</p><strong>{money(salesStats.total)}</strong></div>
+                <div style={{ background: '#222', padding: 10, borderRadius: 8 }}><p style={{ fontSize: 12, opacity: 0.8 }}>Este mes</p><strong>{money(salesStats.month)}</strong></div>
+                <div style={{ background: '#222', padding: 10, borderRadius: 8 }}><p style={{ fontSize: 12, opacity: 0.8 }}>Pendiente de aprobar</p><strong>{money(salesStats.pending)}</strong></div>
+                <div style={{ background: '#222', padding: 10, borderRadius: 8 }}><p style={{ fontSize: 12, opacity: 0.8 }}>Pedidos completados</p><strong>{salesStats.completedCount}</strong></div>
+              </div>
+              <p style={{ fontSize: 12, opacity: 0.8, marginTop: 8 }}>Solo cuentan los pedidos completados.</p>
+              {salesStats.months.map(([m, v]) => (<p key={m}>{m}: <strong>{money(v)}</strong></p>))}
+              <button className="button small" style={{ marginTop: 8 }} onClick={downloadOrdersCsv}>Descargar pedidos (Excel)</button>
+            </div>
+
+            <div className="admin-form" style={{ marginTop: 20 }}>
+              <h3>Revendedores (mínimo {money(RESELLER_MIN)} al mes)</h3>
+              {resellers.map(r => {
+                const cur = salesStats.byUserMonth.get(r.id) ?? { total: 0, count: 0 }
+                const prev = salesStats.byUserPrev.get(r.id)?.total ?? 0
+                const ok = cur.total >= RESELLER_MIN
+                const pct = Math.min(100, Math.round((cur.total / RESELLER_MIN) * 100))
+                return (
+                  <div key={r.id} style={{ background: '#222', padding: 10, margin: '6px 0', borderRadius: 8 }}>
+                    <strong>{r.full_name || 'Revendedor'}</strong>
+                    <p style={{ fontSize: 13 }}>Este mes: {money(cur.total)} ({cur.count} pedidos) — {ok ? 'Cumple' : `Faltan ${money(RESELLER_MIN - cur.total)}`}</p>
+                    <p style={{ fontSize: 13 }}>Mes pasado: {money(prev)} {prev >= RESELLER_MIN ? '(cumplió)' : '(no cumplió)'}</p>
+                    <div style={{ background: '#111', borderRadius: 999, height: 8, overflow: 'hidden', margin: '6px 0' }}>
+                      <div style={{ width: `${pct}%`, height: '100%', background: ok ? '#25d366' : '#f0a500' }} />
+                    </div>
+                    <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
+                      <button className="button secondary small" onClick={() => { setHistoryUser(r.id); setModal('user_orders') }}>Ver pedidos</button>
+                      <button className="button small" onClick={() => { void removeReseller(r) }}>Quitar del programa</button>
+                    </div>
+                  </div>
+                )
+              })}
+              {resellers.length === 0 && <p>Aún no tienes revendedores.</p>}
+            </div>
+            <div className="admin-form" style={{ marginTop: 20 }}>
               <h3>Solicitudes de revendedor pendientes</h3>
               {pendingResellers.map(p => (
                 <div key={p.id} className="admin-product-row" style={{ backgroundColor: '#222', padding: 10, margin: '5px 0' }}>
-                  <span><strong>{p.full_name || 'Usuario'}</strong> quiere ser revendedor.</span>
+                  <span><strong>{p.full_name || 'Usuario'}</strong> quiere ser revendedor.<br />Edad: {p.age ?? '—'} | Ventas estimadas: {p.expected_sales != null ? money(Number(p.expected_sales)) : '—'}</span>
                   <div>
                     <button className="button small" onClick={() => { void approveReseller(p.id, 'approved') }}>Aprobar</button>
                     <button className="button small" style={{ marginLeft: 5 }} onClick={() => { void approveReseller(p.id, 'rejected') }}>Rechazar</button>
@@ -1345,6 +1540,7 @@ setModal('order_done')
                 <label>Correo<input type="email" value={email} onChange={e => setEmail(e.target.value)} /></label>
                 <label>Contraseña<input type="password" value={password} onChange={e => setPassword(e.target.value)} /></label>
                 <button className="button" disabled={loading} onClick={() => { void submitAuth() }}>{loading ? 'Procesando...' : modal === 'login' ? 'Entrar' : 'Crear cuenta'}</button>
+                {modal === 'login' && <button type="button" onClick={() => { setMessage(''); setModal('forgot') }} style={{ textDecoration: 'underline', fontSize: 13 }}>¿Olvidaste tu contraseña?</button>}
                 {message && <p role="status">{message}</p>}
               </div>
             </>
@@ -1383,6 +1579,27 @@ setModal('order_done')
     </div>
   </>
 )}
+          {modal === 'forgot' && (
+            <>
+              <DialogHeader><DialogTitle>Recuperar contraseña</DialogTitle><DialogDescription>Te enviaremos un enlace a tu correo.</DialogDescription></DialogHeader>
+              <div className="auth-form">
+                <label>Correo<input type="email" value={email} onChange={e => setEmail(e.target.value)} /></label>
+                <button className="button" disabled={loading} onClick={() => { void sendReset() }}>{loading ? 'Enviando...' : 'Enviar enlace'}</button>
+                <button className="button secondary small" onClick={() => { setMessage(''); setModal('login') }}>Volver a iniciar sesión</button>
+                {message && <p role="status">{message}</p>}
+              </div>
+            </>
+          )}
+          {modal === 'new_password' && (
+            <>
+              <DialogHeader><DialogTitle>Nueva contraseña</DialogTitle><DialogDescription>Escribe una contraseña nueva de al menos 8 caracteres.</DialogDescription></DialogHeader>
+              <div className="auth-form">
+                <label>Nueva contraseña<input type="password" value={newPass} onChange={e => setNewPass(e.target.value)} /></label>
+                <button className="button" disabled={loading} onClick={() => { void savePassword() }}>{loading ? 'Guardando...' : 'Guardar contraseña'}</button>
+                {message && <p role="status">{message}</p>}
+              </div>
+            </>
+          )}
           {modal === 'legal' && (
             <>
               <DialogHeader><DialogTitle>Aviso legal</DialogTitle></DialogHeader>
@@ -1546,60 +1763,4 @@ setModal('order_done')
             <>
               <DialogHeader><DialogTitle>Completar pedido</DialogTitle><DialogDescription>Deposita el monto y adjunta tu comprobante.</DialogDescription></DialogHeader>
               <div className="auth-form">
-                <div style={{ background: '#222', padding: 10, borderRadius: 8 }}>
-  {cart.map(item => {
-    const unit = Number(isReseller ? item.product.reseller_price : item.product.price)
-    return (
-      <p key={item.product.id}>
-        {item.quantity} × <strong>{item.product.detail || item.product.name}</strong> — {money(unit * item.quantity)}
-      </p>
-    )
-  })}
-  <p><strong>Total a depositar: {money(cart.reduce((t, item) => t + Number(isReseller ? item.product.reseller_price : item.product.price) * item.quantity, 0))}</strong></p>
-</div>
-                <label>{cartContact === 'whatsapp' ? 'Tu número de WhatsApp' : 'ID de jugador'}<input value={playerId} inputMode={cartContact === 'whatsapp' ? 'tel' : undefined} onChange={e => setPlayerId(e.target.value)} placeholder={cartContact === 'whatsapp' ? 'Ej. 50212345678' : 'Ej. 12345678'} /></label>
-                {cartContact === 'whatsapp' && <p style={{ fontSize: 12, opacity: 0.8 }}>Por este número te enviaremos tu pedido. Escríbelo con código de país (Guatemala: 502).</p>}
-                <div style={{ backgroundColor: '#003366', padding: 15, borderRadius: 8, margin: '10px 0' }}>
-                  <h4 style={{ margin: '0 0 10px' }}>Datos para depositar</h4>
-                  {banks.length === 0 && <p>No hay cuentas bancarias disponibles.</p>}
-                  {banks.map(b => (
-                    <div key={b.id} style={{ marginBottom: 10 }}>
-                      <p>Banco: <strong>{b.bank_name}</strong></p>
-                      <p>Cuenta: <strong>{b.account_number}</strong></p>
-                      <p>Titular: <strong>{b.account_holder}</strong></p>
-                    </div>
-                  ))}
-                  <p style={{ fontSize: 11, color: '#ffcc00' }}>Deposita el monto exacto y sube el comprobante.</p>
-                </div>
-                <label>Referencia NC<input value={reference} onChange={e => setReference(e.target.value)} /></label>
-                <label>Monto depositado (Q)<input type="number" value={depositAmount} readOnly /></label>
-                <label>Fecha del depósito<input type="date" value={depositDate} onChange={e => setDepositDate(e.target.value)} /></label>
-                <label style={{ display: 'flex', alignItems: 'center', gap: 10, background: '#222', padding: 10, borderRadius: 5 }}>
-                  <Upload size={20} />{receipt ? receipt.name : 'Seleccionar comprobante'}
-                  <input type="file" style={{ display: 'none' }} accept="image/jpeg,image/png,image/webp,application/pdf" onChange={e => setReceipt(e.target.files?.[0] ?? null)} />
-                </label>
-                {cartIsStreaming && (
-                  <>
-                    <StreamingConditions />
-                    <label style={{ display: 'flex', flexDirection: 'row', gap: 10, alignItems: 'center', fontSize: 14 }}>
-                      <input type="checkbox" checked={acceptService} onChange={e => setAcceptService(e.target.checked)} style={{ width: 22, height: 22, minWidth: 22, margin: 0, padding: 0, flex: '0 0 22px' }} />
-                      <span>Leí y acepto las condiciones del servicio</span>
-                    </label>
-                  </>
-                )}
-                <label style={{ display: 'flex', flexDirection: 'row', gap: 10, alignItems: 'center', fontSize: 14 }}>
-  <input type="checkbox" checked={acceptTerms} onChange={e => setAcceptTerms(e.target.checked)} style={{ width: 22, height: 22, minWidth: 22, margin: 0, padding: 0, flex: '0 0 22px' }} />
-  <span>Acepto los <button type="button" onClick={() => setModal('terms')} style={{ textDecoration: 'underline' }}>términos y condiciones</button></span>
-</label>
-                <div style={{ position: 'sticky', bottom: 0, background: '#0b1320', padding: '10px 0', zIndex: 5 }}>
-  {message && <p role="status" style={{ color: '#00a3ff', marginBottom: 8 }}>{message}</p>}
-  <button className="button" style={{ width: '100%' }} disabled={loading} onClick={() => { void submitOrder() }}>{loading ? 'Enviando...' : 'Confirmar pedido'}</button>
-</div>
-              </div>
-            </>
-          )}
-        </DialogContent>
-      </Dialog>
-    </div>
-  )
-  }
+                <div style={{ b
