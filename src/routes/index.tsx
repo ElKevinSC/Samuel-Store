@@ -1763,4 +1763,60 @@ setModal('order_done')
             <>
               <DialogHeader><DialogTitle>Completar pedido</DialogTitle><DialogDescription>Deposita el monto y adjunta tu comprobante.</DialogDescription></DialogHeader>
               <div className="auth-form">
-                <div style={{ b
+                <div style={{ background: '#222', padding: 10, borderRadius: 8 }}>
+  {cart.map(item => {
+    const unit = Number(isReseller ? item.product.reseller_price : item.product.price)
+    return (
+      <p key={item.product.id}>
+        {item.quantity} × <strong>{item.product.detail || item.product.name}</strong> — {money(unit * item.quantity)}
+      </p>
+    )
+  })}
+  <p><strong>Total a depositar: {money(cart.reduce((t, item) => t + Number(isReseller ? item.product.reseller_price : item.product.price) * item.quantity, 0))}</strong></p>
+</div>
+                <label>{cartContact === 'whatsapp' ? 'Tu número de WhatsApp' : 'ID de jugador'}<input value={playerId} inputMode={cartContact === 'whatsapp' ? 'tel' : undefined} onChange={e => setPlayerId(e.target.value)} placeholder={cartContact === 'whatsapp' ? 'Ej. 50212345678' : 'Ej. 12345678'} /></label>
+                {cartContact === 'whatsapp' && <p style={{ fontSize: 12, opacity: 0.8 }}>Por este número te enviaremos tu pedido. Escríbelo con código de país (Guatemala: 502).</p>}
+                <div style={{ backgroundColor: '#003366', padding: 15, borderRadius: 8, margin: '10px 0' }}>
+                  <h4 style={{ margin: '0 0 10px' }}>Datos para depositar</h4>
+                  {banks.length === 0 && <p>No hay cuentas bancarias disponibles.</p>}
+                  {banks.map(b => (
+                    <div key={b.id} style={{ marginBottom: 10 }}>
+                      <p>Banco: <strong>{b.bank_name}</strong></p>
+                      <p>Cuenta: <strong>{b.account_number}</strong></p>
+                      <p>Titular: <strong>{b.account_holder}</strong></p>
+                    </div>
+                  ))}
+                  <p style={{ fontSize: 11, color: '#ffcc00' }}>Deposita el monto exacto y sube el comprobante.</p>
+                </div>
+                <label>Referencia NC<input value={reference} onChange={e => setReference(e.target.value)} /></label>
+                <label>Monto depositado (Q)<input type="number" value={depositAmount} readOnly /></label>
+                <label>Fecha del depósito<input type="date" value={depositDate} onChange={e => setDepositDate(e.target.value)} /></label>
+                <label style={{ display: 'flex', alignItems: 'center', gap: 10, background: '#222', padding: 10, borderRadius: 5 }}>
+                  <Upload size={20} />{receipt ? receipt.name : 'Seleccionar comprobante'}
+                  <input type="file" style={{ display: 'none' }} accept="image/jpeg,image/png,image/webp,application/pdf" onChange={e => setReceipt(e.target.files?.[0] ?? null)} />
+                </label>
+                {cartIsStreaming && (
+                  <>
+                    <StreamingConditions />
+                    <label style={{ display: 'flex', flexDirection: 'row', gap: 10, alignItems: 'center', fontSize: 14 }}>
+                      <input type="checkbox" checked={acceptService} onChange={e => setAcceptService(e.target.checked)} style={{ width: 22, height: 22, minWidth: 22, margin: 0, padding: 0, flex: '0 0 22px' }} />
+                      <span>Leí y acepto las condiciones del servicio</span>
+                    </label>
+                  </>
+                )}
+                <label style={{ display: 'flex', flexDirection: 'row', gap: 10, alignItems: 'center', fontSize: 14 }}>
+  <input type="checkbox" checked={acceptTerms} onChange={e => setAcceptTerms(e.target.checked)} style={{ width: 22, height: 22, minWidth: 22, margin: 0, padding: 0, flex: '0 0 22px' }} />
+  <span>Acepto los <button type="button" onClick={() => setModal('terms')} style={{ textDecoration: 'underline' }}>términos y condiciones</button></span>
+</label>
+                <div style={{ position: 'sticky', bottom: 0, background: '#0b1320', padding: '10px 0', zIndex: 5 }}>
+  {message && <p role="status" style={{ color: '#00a3ff', marginBottom: 8 }}>{message}</p>}
+  <button className="button" style={{ width: '100%' }} disabled={loading} onClick={() => { void submitOrder() }}>{loading ? 'Enviando...' : 'Confirmar pedido'}</button>
+</div>
+              </div>
+            </>
+          )}
+        </DialogContent>
+      </Dialog>
+    </div>
+  )
+  }
