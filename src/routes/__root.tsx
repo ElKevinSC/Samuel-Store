@@ -7,6 +7,8 @@ import { NotFoundPage } from '@/components/error-pages'
 import '../styles.css'
 
 const siteName = 'Samuel Store | Tu mundo digital, en un solo lugar'
+const siteUrl = 'https://samuelstore.online'
+const siteLogo = `${siteUrl}/images/samuel-store-logo.jpg`
 const siteDescription = 'Recargas de videojuegos, streaming y servicios digitales en Guatemala. En Samuel Store, tu meta es nuestra meta.'
 
 export const Route = createRootRoute({
@@ -55,8 +57,36 @@ export const Route = createRootRoute({
         content: 'website',
       },
       {
+        property: 'og:url',
+        content: `${siteUrl}/`,
+      },
+      {
+        property: 'og:site_name',
+        content: 'Samuel Store',
+      },
+      {
+        property: 'og:locale',
+        content: 'es_GT',
+      },
+      {
+        property: 'og:image',
+        content: siteLogo,
+      },
+      {
         name: 'twitter:card',
-        content: 'summary_large_image',
+        content: 'summary',
+      },
+      {
+        name: 'twitter:title',
+        content: siteName,
+      },
+      {
+        name: 'twitter:description',
+        content: siteDescription,
+      },
+      {
+        name: 'twitter:image',
+        content: siteLogo,
       },
     ],
     links: [
@@ -64,6 +94,7 @@ export const Route = createRootRoute({
       { rel: 'icon', type: 'image/png', sizes: '192x192', href: '/icon-192.png' },
       { rel: 'apple-touch-icon', href: '/apple-touch-icon.png' },
       { rel: 'manifest', href: '/manifest.webmanifest' },
+      { rel: 'canonical', href: `${siteUrl}/` },
     ],
     scripts: [
       {
@@ -72,6 +103,15 @@ export const Route = createRootRoute({
           '@context': 'https://schema.org',
           '@type': 'Organization',
           name: 'Samuel Store',
+          url: `${siteUrl}/`,
+          logo: siteLogo,
+          areaServed: 'GT',
+          contactPoint: {
+            '@type': 'ContactPoint',
+            telephone: '+502-5456-0623',
+            contactType: 'customer service',
+            availableLanguage: 'Spanish',
+          },
           sameAs: [
             'https://www.facebook.com/SamuelStoreGt',
             'https://www.instagram.com/SamuelStoreGt',
