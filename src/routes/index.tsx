@@ -162,7 +162,7 @@ function StreamingConditions() {
 
 type Product = { id: string; name: string; detail: string; game_name: string | null; category: Category; price: number; reseller_price: number; active: boolean; contact_type: string; duration_days: number | null; image_url?: string | null }
 type Bank = { id: string; bank_name: string; account_number: string; account_holder: string; active: boolean }
-type Profile = { id: string; full_name: string; role: string; application_status: string; age?: number | null; expected_sales?: number | null }
+type Profile = { id: string; full_name: string; role: string; application_status: string; age?: number | null; expected_sales?: number | null; whatsapp?: string | null }
 type Order = { id: string; user_id: string; product_id: string | null; player_id: string; amount: number; reference_nc: string; deposit_date: string | null; receipt_path: string | null; status: string; created_at: string; completed_at?: string | null; products?: { detail?: string; game_name?: string } | null; order_items?: Item[] | null; profiles?: { full_name?: string } | null; receipt_signed_url?: string | null }
 
 function Home() {
@@ -186,6 +186,7 @@ function Home() {
   const [fullName, setFullName] = useState('')
   const [resAge, setResAge] = useState('')
   const [expectedSales, setExpectedSales] = useState('')
+  const [resellerWhatsapp, setResellerWhatsapp] = useState('')
   const [product, setProduct] = useState<Product | null>(null)
   
 const [cart, setCart] = useState<
@@ -259,7 +260,7 @@ const { data, error } = await supabase.from('orders').select(`*, products(detail
   async function refreshAdmin() {
     if (!supabase) return
     const [p, b, o, ap] = await Promise.all([
-      supabase.from('profiles').select('id,full_name,role,application_status,age,expected_sales'),
+      supabase.from('profiles').select('id,full_name,role,application_status,age,expected_sales,whatsapp'),
       supabase.from('bank_accounts').select('id,bank_name,account_number,account_holder,active')
         .eq('active', true),
 supabase.from('orders').select(`*, products(detail,game_name), order_items(${ITEM_FIELDS}), profiles(full_name)`).order('created_at', { ascending: false }),
@@ -362,6 +363,12 @@ if (p.error || b.error || o.error) {
       setMessage('Inicia sesión para enviar la solicitud.')
       return
     }
+    const cleanWhatsapp = resellerWhatsapp.replace(/\D/g, '')
+    const normalizedWhatsapp = cleanWhatsapp.length === 8 ? `502${cleanWhatsapp}` : cleanWhatsapp
+    if (!/^502[0-9]{8}$/.test(normalizedWhatsapp)) {
+      setMessage('Escribe un número de WhatsApp de Guatemala válido (8 dígitos).')
+      return
+    }
     if (!fullName.trim() || Number(resAge) < 18 || Number(expectedSales) < 200) {
       setMessage('Completa el nombre, edad mínima de 18 años y ventas estimadas de Q200 o más.')
       return
@@ -371,6 +378,7 @@ if (p.error || b.error || o.error) {
       full_name: fullName.trim(),
       age: Number(resAge),
       expected_sales: Number(expectedSales),
+      whatsapp: normalizedWhatsapp,
       application_status: 'pending'
     }).eq('id', user.id)
     setLoading(false)
@@ -1356,7 +1364,7 @@ setModal('order_done')
               <h3>Solicitudes de revendedor pendientes</h3>
               {pendingResellers.map(p => (
                 <div key={p.id} className="admin-product-row" style={{ backgroundColor: '#222', padding: 10, margin: '5px 0' }}>
-                  <span><strong>{p.full_name || 'Usuario'}</strong> quiere ser revendedor.<br />Edad: {p.age ?? '—'} | Ventas estimadas: {p.expected_sales != null ? money(Number(p.expected_sales)) : '—'}</span>
+                  <span><strong>{p.full_name || 'Usuario'}</strong> quiere ser revendedor.<br />Edad: {p.age ?? '—'} | WhatsApp: {p.whatsapp ? <a href={`https://wa.me/${p.whatsapp.replace(/\D/g, '')}`} target="_blank" rel="noreferrer">{p.whatsapp} (Contactar)</a> : '—'} | Ventas estimadas: {p.expected_sales != null ? money(Number(p.expected_sales)) : '—'}</span>
                   <div>
                     <button className="button small" onClick={() => { void approveReseller(p.id, 'approved') }}>Aprobar</button>
                     <button className="button small" style={{ marginLeft: 5 }} onClick={() => { void approveReseller(p.id, 'rejected') }}>Rechazar</button>
@@ -1691,7 +1699,8 @@ setModal('order_done')
               <div className="auth-form">
                 <label>Nombre completo<input value={fullName} onChange={e => setFullName(e.target.value)} /></label>
                 <label>Edad<input type="number" min="18" value={resAge} onChange={e => setResAge(e.target.value)} /></label>
-                <label>Ventas estimadas al mes (Q)<input type="number" min="200" value={expectedSales} onChange={e => setExpectedSales(e.target.value)} /></label>
+                                 <label>WhatsApp<input type="tel" inputMode="tel" placeholder="Ejemplo: 54560623" value={resellerWhatsapp} onChange={e => setResellerWhatsapp(e.target.value)} /></label>
+<label>Ventas estimadas al mes (Q)<input type="number" min="200" value={expectedSales} onChange={e => setExpectedSales(e.target.value)} /></label>
                 <button className="button" disabled={loading} onClick={() => { void applyReseller() }}>Enviar solicitud</button>
                 {message && <p role="status">{message}</p>}
               </div>
