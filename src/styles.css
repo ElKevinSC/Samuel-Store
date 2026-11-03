@@ -32,3 +32,157 @@
 @media(max-width:800px){.header{gap:8px}.account{gap:8px}.account span.login{display:none}}
 @media(max-width:560px){.product-info h3{font-size:14px;line-height:1.25}.price-row strong{font-size:19px}}
 @media(max-width:420px){.hero h1{font-size:56px}}
+
+
+/* Samuel Store — Diseño de los paneles de administración.
+   Añadir al FINAL de src/styles.css; no reemplaza los estilos existentes. */
+
+#admin-panel {
+  position: relative;
+  max-width: 1240px;
+  padding-top: 32px;
+  padding-bottom: 64px;
+}
+
+#admin-panel > h2 {
+  margin-bottom: 8px;
+  color: #f6f9ff;
+  font-family: var(--font-heading, sans-serif);
+  font-size: clamp(30px, 4vw, 44px);
+  letter-spacing: .2px;
+}
+
+#admin-panel > p {
+  color: #aebdd0;
+  line-height: 1.6;
+}
+
+/* Menú: Inicio, Videojuegos, Streaming, Pagos y demás secciones. */
+#admin-panel > div:first-of-type {
+  margin-top: 22px !important;
+  margin-bottom: 28px !important;
+  gap: 12px !important;
+}
+
+#admin-panel > div:first-of-type > button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 70px !important;
+  padding: 14px 12px;
+  border-radius: 16px !important;
+  border: 1px solid #31445c;
+  background: linear-gradient(145deg, #172638, #0c1420);
+  color: #e6effc;
+  font-size: 13px !important;
+  font-weight: 700;
+  line-height: 1.4;
+  white-space: normal;
+  text-align: center;
+  box-shadow: 0 5px 18px rgba(0, 0, 0, .13);
+  transition: border-color .2s, background .2s, transform .2s;
+}
+
+#admin-panel > div:first-of-type > button:hover {
+  border-color: #00a3ff;
+  background: #1b324a;
+  transform: translateY(-2px);
+}
+
+#admin-panel > div:first-of-type > button.button:not(.secondary) {
+  border-color: #00a3ff;
+  background: linear-gradient(140deg, #006cba, #009fe8);
+  color: #fff;
+  box-shadow: 0 6px 22px rgba(0, 163, 255, .2);
+}
+
+/* Formularios y bloques: se aplican SOLO dentro del panel admin. */
+#admin-panel .admin-form {
+  min-width: 0;
+  padding: 22px;
+  border: 1px solid #293c53;
+  border-radius: 18px;
+  background: linear-gradient(160deg, #121f30, #0b1320);
+  box-shadow: 0 12px 26px rgba(0, 0, 0, .12);
+}
+
+#admin-panel .admin-form h3 {
+  margin: 0 0 8px;
+  color: #f4f8ff;
+  font-size: clamp(19px, 2.5vw, 25px);
+  line-height: 1.2;
+}
+
+#admin-panel .admin-form p {
+  line-height: 1.6;
+}
+
+#admin-panel .admin-form input,
+#admin-panel .admin-form select,
+#admin-panel .admin-form textarea {
+  max-width: 100%;
+  min-height: 45px;
+  border: 1px solid #354962;
+  border-radius: 10px;
+  background: #091525;
+  color: #f8fafc;
+}
+
+#admin-panel .admin-form input:focus,
+#admin-panel .admin-form select:focus,
+#admin-panel .admin-form textarea:focus {
+  outline: 2px solid #00a3ff;
+  outline-offset: 1px;
+}
+
+#admin-panel .button {
+  max-width: 100%;
+  border-radius: 10px;
+  font-weight: 700;
+}
+
+#admin-panel .admin-product-row {
+  flex-wrap: wrap;
+  gap: 12px;
+  padding: 13px 0;
+}
+
+/* Evita que referencias, correos y datos largos salgan de la pantalla. */
+#admin-panel .admin-form,
+#admin-panel .admin-form p,
+#admin-panel .admin-product-row {
+  overflow-wrap: anywhere;
+}
+
+@media (max-width: 600px) {
+  #admin-panel {
+    padding-top: 26px;
+    padding-bottom: 48px;
+  }
+
+  #admin-panel > div:first-of-type {
+    gap: 9px !important;
+  }
+
+  #admin-panel > div:first-of-type > button {
+    min-height: 62px !important;
+    padding: 11px 8px;
+    font-size: 12px !important;
+  }
+
+  #admin-panel .admin-form {
+    padding: 15px;
+    border-radius: 14px;
+  }
+
+  #admin-panel .admin-form .button {
+    white-space: normal;
+    text-align: center;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  #admin-panel > div:first-of-type > button {
+    transition: none;
+  }
+}
