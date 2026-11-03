@@ -167,6 +167,7 @@ type Order = { id: string; user_id: string; product_id: string | null; player_id
 
 function Home() {
   const [selectedGame, setSelectedGame] = useState<string | null>(null)
+  const [adminTab, setAdminTab] = useState<'inicio' | 'videojuegos' | 'streaming' | 'pagos' | 'ventas' | 'revendedores' | 'productos' | 'bancos' | 'clientes'>('inicio')
   const [menu, setMenu] = useState(false)
   const [modal, setModal] = useState<'login' | 'register' | 'reseller_apply' | 'checkout'| 'my_orders' | 'terms' | 'order_done' | 'legal' | 'privacy' | 'user_orders' | 'my_subs' | 'renew' | 'forgot' | 'new_password' | null>(null)
   const [user, setUser] = useState<User | null>(null)
@@ -1228,6 +1229,24 @@ setModal('order_done')
         {isAdmin && (
           <section className="section wrap" id="admin-panel" style={{ borderTop: '2px solid #00a3ff', marginTop: 50, paddingBottom: 50 }}>
             <h2>Panel de administración</h2>
+            <p style={{ opacity: 0.75 }}>Selecciona una sección para administrar tu tienda.</p>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(135px, 1fr))', gap: 10, margin: '18px 0 24px' }}>
+              {([
+                ['inicio', '🏠 Inicio'], ['videojuegos', '🎮 Videojuegos'], ['streaming', '📺 Streaming'],
+                ['pagos', '💳 Pagos'], ['ventas', '📊 Ventas'], ['revendedores', '👥 Revendedores'],
+                ['productos', '📦 Productos'], ['bancos', '🏦 Bancos'], ['clientes', '👤 Clientes'],
+              ] as const).map(([id, title]) => (
+                <button key={id} type="button" onClick={() => setAdminTab(id)}
+                  className={adminTab === id ? 'button' : 'button secondary'}
+                  style={{ minHeight: 54, borderRadius: 12, fontSize: 13, whiteSpace: 'normal' }}>
+                  {title}
+                </button>
+              ))}
+            </div>
+            {adminTab !== 'inicio' && <button type="button" className="button secondary small" style={{ marginBottom: 14 }} onClick={() => setAdminTab('inicio')}>← Volver al inicio</button>}
+            {adminTab === 'inicio' && <div className="admin-form"><h3>Bienvenido al panel</h3><p>Elige una sección del menú. Los pedidos y herramientas están organizados por categoría.</p></div>}
+
+            {( adminTab === 'ventas' ) && (<>
             <div className="admin-form" style={{ marginTop: 20 }}>
               <h3>Ventas</h3>
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
@@ -1240,7 +1259,9 @@ setModal('order_done')
               {salesStats.months.map(([m, v]) => (<p key={m}>{m}: <strong>{money(v)}</strong></p>))}
               <button className="button small" style={{ marginTop: 8 }} onClick={downloadOrdersCsv}>Descargar pedidos (Excel)</button>
             </div>
+            </>)}
 
+            {( adminTab === 'revendedores' ) && (<>
             <div className="admin-form" style={{ marginTop: 20 }}>
               <h3>Revendedores (mínimo {money(RESELLER_MIN)} al mes)</h3>
               {resellers.map(r => {
@@ -1265,6 +1286,9 @@ setModal('order_done')
               })}
               {resellers.length === 0 && <p>Aún no tienes revendedores.</p>}
             </div>
+            </>)}
+
+            {( adminTab === 'revendedores' ) && (<>
             <div className="admin-form" style={{ marginTop: 20 }}>
               <h3>Solicitudes de revendedor pendientes</h3>
               {pendingResellers.map(p => (
@@ -1278,11 +1302,13 @@ setModal('order_done')
               ))}
               {pendingResellers.length === 0 && <p>No hay solicitudes pendientes.</p>}
             </div>
+            </>)}
 
+            {( adminTab === 'pagos' || adminTab === 'videojuegos' ) && (<>
             <div className="admin-form" style={{ marginTop: 20 }}>
-              <h3>Pedidos pendientes</h3>
+              <h3>{adminTab === 'videojuegos' ? 'Pedidos de videojuegos' : 'Pedidos de streaming y pagos'}</h3>
               <div style={{ maxHeight: '75dvh', overflowY: 'auto' }}>
-                {pendingOrders.map(o => {
+                {pendingOrders.filter(o => adminTab === 'pagos' || (o.order_items ?? []).some(it => it.category === 'Videojuegos')).map(o => {
                   const items = o.order_items ?? []
                   const first = items[0]
                   const isWa = first?.contact_type === 'whatsapp'
@@ -1352,7 +1378,9 @@ setModal('order_done')
               </div>
               <button className="button secondary small" onClick={() => { void refreshAdmin() }}><RefreshCw size={14} /> Actualizar</button>
             </div>
+            </>)}
 
+            {( adminTab === 'productos' ) && (<>
             <div className="admin-form" style={{ marginTop: 20 }}>
               <h3>Crear juego / paquete</h3>
               <label>Sección<select value={newCategory} onChange={e => { const v = e.target.value as 'Videojuegos' | 'Streaming'; setNewCategory(v); setNewContact(v === 'Streaming' ? 'whatsapp' : 'player_id') }}><option value="Videojuegos">Videojuegos</option><option value="Streaming">Streaming</option></select></label>
@@ -1367,7 +1395,9 @@ setModal('order_done')
               <input type="number" min="0" step="0.01" placeholder="Precio revendedor (Q)" value={resellerPrice} onChange={e => setResellerPrice(e.target.value)} />
               <button className="button" disabled={loading} onClick={() => { void saveProduct() }}>Guardar producto</button>
             </div>
+            </>)}
 
+            {( adminTab === 'productos' ) && (<>
             <div className="admin-form" style={{ marginTop: 20 }}>
               <h3>Editar productos</h3>
               <p style={{ fontSize: 12, opacity: 0.8 }}>Cambia nombres y precios. Los pedidos ya hechos no cambian; los precios nuevos aplican a compras y renovaciones nuevas. Para unir dos plataformas, ponles el mismo nombre en "Plataforma o juego".</p>
@@ -1410,7 +1440,9 @@ setModal('order_done')
                 {productGroups.length === 0 && <p>Aún no hay productos.</p>}
               </div>
             </div>
+            </>)}
 
+            {( adminTab === 'bancos' ) && (<>
             <div className="admin-form" style={{ marginTop: 20 }}>
               <h3>Mis cuentas bancarias</h3>
               <input placeholder="Banco (Ej. Banrural)" value={bankName} onChange={e => setBankName(e.target.value)} />
@@ -1419,6 +1451,9 @@ setModal('order_done')
               <button className="button" disabled={loading} onClick={() => { void saveBank() }}>Guardar cuenta</button>
               <ul>{banks.map(b => <li key={b.id}>{b.bank_name} — {b.account_number} ({b.account_holder})</li>)}</ul>
             </div>
+            </>)}
+
+            {( adminTab === 'streaming' ) && (<>
             <div className="admin-form" style={{ marginTop: 20 }}>
               <h3>Suscripciones de streaming</h3>
               <div style={{ maxHeight: '50dvh', overflowY: 'auto' }}>
@@ -1440,7 +1475,9 @@ setModal('order_done')
                 {adminSubs.length === 0 && <p>Aún no hay suscripciones entregadas.</p>}
               </div>
             </div>
+            </>)}
 
+            {( adminTab === 'productos' ) && (<>
             <div className="admin-form" style={{ marginTop: 20 }}>
               <h3>Qué datos pide cada juego o plataforma</h3>
               {contactRows.map(r => (
@@ -1454,7 +1491,9 @@ setModal('order_done')
               ))}
               {contactRows.length === 0 && <p>Aún no hay productos.</p>}
             </div>
+            </>)}
 
+            {( adminTab === 'clientes' ) && (<>
             <div className="admin-form" style={{ marginTop: 20 }}>
               <h3>Pedidos por usuario</h3>
               {usersWithOrders.map(u => (
@@ -1468,6 +1507,8 @@ setModal('order_done')
               ))}
               {usersWithOrders.length === 0 && <p>Aún no hay pedidos.</p>}
             </div>
+            </>)}
+
             {message && <p role="status" style={{ color: '#00a3ff', marginTop: 12 }}>{message}</p>}
           </section>
         )}
