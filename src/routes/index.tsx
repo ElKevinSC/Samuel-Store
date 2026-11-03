@@ -56,7 +56,7 @@ const LEGAL_SECTIONS: [string, string][] = [
 
 const PRIVACY_SECTIONS: [string, string][] = [
   ['1. Responsable', 'Samuel Store, a cargo de Kevin Castillo. Para temas de privacidad escríbenos por WhatsApp al +502 5456 0623.'],
-  ['2. Datos que recopilamos', 'Nombre, correo electrónico y contraseña de acceso (la contraseña la protege el servicio de autenticación y nosotros no podemos verla); ID de jugador o número de WhatsApp; referencia, fecha y monto del depósito; comprobante de pago (imagen o PDF), que puede mostrar datos bancarios y solo se usa para verificar el pago; historial de pedidos y suscripciones. Si solicitas ser revendedor: edad y ventas estimadas. También guardamos datos técnicos básicos para mantener tu sesión.'],
+  ['2. Datos que recopilamos', 'Nombre, correo electrónico y contraseña de acceso (la contraseña la protege el servicio de autenticación y nosotros no podemos verla); ID de jugador o número de WhatsApp; referencia, fecha y monto del depósito; comprobante de pago (imagen o PDF), que puede mostrar datos bancarios y solo se usa para verificar el pago; historial de pedidos y suscripciones. Si solicitas ser revendedor: nombre, edad, WhatsApp y ventas estimadas. También guardamos datos técnicos básicos para mantener tu sesión.'],
   ['3. Para qué los usamos', 'Para verificar pagos, realizar recargas y entregas, darte soporte y avisos de tu servicio (por ejemplo, su vencimiento), administrar el programa de revendedores, prevenir fraudes y cumplir obligaciones legales.'],
   ['4. Cuentas que te entregamos', 'Los datos de acceso de los servicios de streaming que te entregamos se guardan para que puedas consultarlos en tu panel. Solo pueden verlos tú y el administrador de la tienda.'],
   ['5. Proveedores y terceros', 'Para operar la tienda usamos Supabase (base de datos, autenticación y archivos) y Netlify (alojamiento del sitio). Estos servicios pueden guardar datos en servidores fuera de Guatemala. Si hablas con nosotros por WhatsApp, esa conversación se rige además por las políticas de WhatsApp (Meta). No vendemos tus datos ni los usamos para publicidad de terceros.'],
@@ -173,6 +173,7 @@ function Home() {
   const [user, setUser] = useState<User | null>(null)
   const [isAdmin, setIsAdmin] = useState(false)
   const [isReseller, setIsReseller] = useState(false)
+  const [resellerApplicationStatus, setResellerApplicationStatus] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
   const [message, setMessage] = useState('')
   const [products, setProducts] = useState<Product[]>([])
@@ -295,10 +296,18 @@ if (p.error || b.error || o.error) {
 
   async function loadUserRole(current: User) {
     if (!supabase) return
-    const { data } = await supabase.from('profiles').select('role').eq('id', current.id).maybeSingle()
+    const { data, error } = await supabase.from('profiles')
+      .select('role,application_status')
+      .eq('id', current.id)
+      .maybeSingle()
+    if (error) {
+      console.error('No se pudo leer el perfil:', error.message)
+      return
+    }
     const role = data?.role ?? 'customer'
     setIsAdmin(role === 'admin')
     setIsReseller(role === 'reseller' || role === 'admin')
+    setResellerApplicationStatus(data?.application_status ?? null)
     if (role === 'admin') await refreshAdmin()
     await fetchMyOrders(current.id)
   }
@@ -322,6 +331,7 @@ if (p.error || b.error || o.error) {
       else {
         setIsAdmin(false)
         setIsReseller(false)
+        setResellerApplicationStatus(null)
         setMyOrders([])
         setOrders([])
         setProfiles([])
@@ -359,34 +369,102 @@ if (p.error || b.error || o.error) {
   }
 
   async function applyReseller() {
+    if (loading) return
     if (!supabase || !user) {
-      setMessage('Inicia sesión para enviar la solicitud.')
+      setMessage('Inicia sesión para enviar tu solicitud.')
       return
     }
+
     const cleanWhatsapp = resellerWhatsapp.replace(/\D/g, '')
-    const normalizedWhatsapp = cleanWhatsapp.length === 8 ? `502${cleanWhatsapp}` : cleanWhatsapp
-    if (!/^502[0-9]{8}$/.test(normalizedWhatsapp)) {
-      setMessage('Escribe un número de WhatsApp de Guatemala válido (8 dígitos).')
+    const whatsapp = cleanWhatsapp.length === 8 ? `502${cleanWhatsapp}` : cleanWhatsapp
+    const name = fullName.trim()
+    const age = Number(resAge)
+    const sales = Number(expectedSales)
+
+    if (!name) {
+      setMessage('Escribe tu nombre completo.')
       return
     }
-    if (!fullName.trim() || Number(resAge) < 18 || Number(expectedSales) < 200) {
-      setMessage('Completa el nombre, edad mínima de 18 años y ventas estimadas de Q200 o más.')
+    if (!Number.isInteger(age) || age < 18 || age > 120) {
+      setMessage('Debes tener al menos 18 años. Revisa la edad ingresada.')
       return
     }
+    if (!/^502[0-9]{8}$/.test(whatsapp)) {
+      setMessage('Escribe tu WhatsApp de Guatemala (8 dígitos, con 502 opcional).')
+      return
+    }
+    if (!Number.isFinite(sales) || sales < RESELLER_MIN) {
+      setMessage(`Las ventas estimadas deben ser de Q${RESELLER_MIN} o más.`)
+      return
+    }
+
     setLoading(true)
-    const { error } = await supabase.from('profiles').update({
-      full_name: fullName.trim(),
-      age: Number(resAge),
-      expected_sales: Number(expectedSales),
-      whatsapp: normalizedWhatsapp,
-      application_status: 'pending'
-    }).eq('id', user.id)
-    setLoading(false)
-    if (error) setMessage(`Error al enviar solicitud: ${error.message}`)
-    else {
+    setMessage('Guardando tu solicitud...')
+    try {
+      // Un UPDATE normal puede afectar 0 filas SIN devolver un error.
+      // Primero averiguamos si el usuario ya tiene perfil para insertar si falta.
+      const { data: currentProfile, error: profileError } = await supabase
+        .from('profiles')
+        .select('id,role,application_status')
+        .eq('id', user.id)
+        .maybeSingle()
+
+      if (profileError) throw new Error(`No se pudo leer tu perfil: ${profileError.message}`)
+      if (currentProfile && currentProfile.role !== 'customer') {
+        throw new Error('Tu cuenta ya tiene un rol diferente al de cliente.')
+      }
+      if (currentProfile && ['approved', 'rejected'].includes(currentProfile.application_status ?? '')) {
+        throw new Error('Tu solicitud ya fue resuelta. Contacta a Samuel Store para volver a solicitar.')
+      }
+
+      const dataToSave = {
+        full_name: name,
+        age,
+        whatsapp,
+        expected_sales: sales,
+        application_status: 'pending',
+      }
+      const columns = 'id,full_name,age,whatsapp,expected_sales,application_status'
+
+      const { data: saved, error: saveError } = currentProfile
+        ? await supabase.from('profiles')
+            .update(dataToSave)
+            .eq('id', user.id)
+            .select(columns)
+            .maybeSingle()
+        : await supabase.from('profiles')
+            .insert({ id: user.id, role: 'customer', ...dataToSave })
+            .select(columns)
+            .maybeSingle()
+
+      if (saveError) throw new Error(saveError.message)
+      if (!saved) {
+        throw new Error('Supabase no guardó ninguna fila. Revisa los permisos del perfil.')
+      }
+      if (saved.application_status !== 'pending') {
+        throw new Error('El estado no quedó pendiente; revisa los triggers del perfil.')
+      }
+      if (Number(saved.expected_sales) !== sales) {
+        throw new Error('Las ventas estimadas no se guardaron; aplica el SQL de seguridad adjunto.')
+      }
+      if (saved.whatsapp !== whatsapp || saved.full_name !== name || Number(saved.age) !== age) {
+        throw new Error('Los datos no se guardaron completos. Revisa la configuración del perfil.')
+      }
+
+      // La confirmación solo se muestra después de verificar la fila en Supabase.
+      setResellerApplicationStatus('pending')
+      setResAge('')
+      setResellerWhatsapp('')
+      setExpectedSales('')
+      setMessage('')
       setModal(null)
-      setMessage('Solicitud enviada. El administrador la revisará.')
-      await loadUserRole(user)
+      showToast('¡Solicitud enviada y guardada! Pendiente de aprobación.')
+    } catch (err) {
+      const detail = err instanceof Error ? err.message : 'Error desconocido'
+      console.error('Error al enviar solicitud de revendedor:', err)
+      setMessage(`No se pudo enviar la solicitud: ${detail}`)
+    } finally {
+      setLoading(false)
     }
   }
 
@@ -1060,10 +1138,16 @@ setModal('order_done')
             <div>
               <h2>{section}<span className="blue-text">.</span></h2>
               {!isReseller && user && (
-                <p style={{ fontSize: 12, color: '#f06675' }}>
-                  <button onClick={() => { setMessage(''); setModal('reseller_apply') }} style={{ textDecoration: 'underline' }}>
-                    Solicita ser revendedor aquí
-                  </button>
+                <p style={{ fontSize: 12, color: resellerApplicationStatus === 'pending' ? '#25d366' : '#f06675' }}>
+                  {resellerApplicationStatus === 'pending' ? (
+                    <>Tu solicitud de revendedor está en revisión. Te avisaremos cuando se apruebe.</>
+                  ) : resellerApplicationStatus === 'rejected' ? (
+                    <>Tu solicitud anterior fue rechazada. Contáctanos si deseas volver a solicitar.</>
+                  ) : (
+                    <button type="button" onClick={() => { setMessage(''); setModal('reseller_apply') }} style={{ textDecoration: 'underline' }}>
+                      Solicita ser revendedor aquí
+                    </button>
+                  )}
                 </p>
               )}
             </div>
@@ -1307,7 +1391,7 @@ setModal('order_done')
                 ['pagos', '💳 Pagos'], ['ventas', '📊 Ventas'], ['revendedores', '👥 Revendedores'],
                 ['productos', '📦 Productos'], ['bancos', '🏦 Bancos'], ['clientes', '👤 Clientes'],
               ] as const).map(([id, title]) => (
-                <button key={id} type="button" onClick={() => setAdminTab(id)}
+                <button key={id} type="button" onClick={() => { setAdminTab(id); if (id === 'revendedores') void refreshAdmin() }}
                   className={adminTab === id ? 'button' : 'button secondary'}
                   style={{ minHeight: 54, borderRadius: 12, fontSize: 13, whiteSpace: 'normal' }}>
                   {title}
@@ -1362,6 +1446,7 @@ setModal('order_done')
             {( adminTab === 'revendedores' ) && (<>
             <div className="admin-form" style={{ marginTop: 20 }}>
               <h3>Solicitudes de revendedor pendientes</h3>
+              <button type="button" className="button secondary small" onClick={() => { void refreshAdmin() }} style={{ marginBottom: 10 }}>↻ Actualizar solicitudes</button>
               {pendingResellers.map(p => (
                 <div key={p.id} className="admin-product-row" style={{ backgroundColor: '#222', padding: 10, margin: '5px 0' }}>
                   <span><strong>{p.full_name || 'Usuario'}</strong> quiere ser revendedor.<br />Edad: {p.age ?? '—'} | WhatsApp: {p.whatsapp ? <a href={`https://wa.me/${p.whatsapp.replace(/\D/g, '')}`} target="_blank" rel="noreferrer">{p.whatsapp} (Contactar)</a> : '—'} | Ventas estimadas: {p.expected_sales != null ? money(Number(p.expected_sales)) : '—'}</span>
@@ -1699,9 +1784,9 @@ setModal('order_done')
               <div className="auth-form">
                 <label>Nombre completo<input value={fullName} onChange={e => setFullName(e.target.value)} /></label>
                 <label>Edad<input type="number" min="18" value={resAge} onChange={e => setResAge(e.target.value)} /></label>
-                                 <label>WhatsApp<input type="tel" inputMode="tel" placeholder="Ejemplo: 54560623" value={resellerWhatsapp} onChange={e => setResellerWhatsapp(e.target.value)} /></label>
-<label>Ventas estimadas al mes (Q)<input type="number" min="200" value={expectedSales} onChange={e => setExpectedSales(e.target.value)} /></label>
-                <button className="button" disabled={loading} onClick={() => { void applyReseller() }}>Enviar solicitud</button>
+                <label>WhatsApp<input type="tel" inputMode="tel" placeholder="Ejemplo: 54560623" value={resellerWhatsapp} onChange={e => setResellerWhatsapp(e.target.value)} /></label>
+                <label>Ventas estimadas al mes (Q)<input type="number" min="200" value={expectedSales} onChange={e => setExpectedSales(e.target.value)} /></label>
+                <button type="button" className="button" disabled={loading} onClick={() => { void applyReseller() }}>{loading ? 'Enviando...' : 'Enviar solicitud'}</button>
                 {message && <p role="status">{message}</p>}
               </div>
             </>
