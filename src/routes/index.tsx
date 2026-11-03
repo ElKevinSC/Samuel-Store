@@ -209,6 +209,8 @@ const [waLink, setWaLink] = useState('')
   const [newContact, setNewContact] = useState<'player_id' | 'whatsapp'>('player_id')
   const [newDuration, setNewDuration] = useState('30')
   const [delivery, setDelivery] = useState<Record<string, Delivery>>({})
+  const [editingDeliveredId, setEditingDeliveredId] = useState<string | null>(null)
+  const [savingDeliveredId, setSavingDeliveredId] = useState<string | null>(null)
   const [renewItem, setRenewItem] = useState<Item | null>(null)
   const [allProducts, setAllProducts] = useState<Product[]>([])
   const [editingId, setEditingId] = useState<string | null>(null)
@@ -512,6 +514,64 @@ setModal('order_done')
   }
   function setDel(it: Item, patch: Partial<Delivery>) {
     setDelivery(cur => ({ ...cur, [it.id]: { ...(cur[it.id] ?? baseDel(it)), ...patch } }))
+  }
+
+  function startEditingDelivered(it: Item) {
+    setDelivery(cur => ({ ...cur, [it.id]: baseDel(it) }))
+    setEditingDeliveredId(it.id)
+  }
+
+  function cancelEditingDelivered(id: string) {
+    setEditingDeliveredId(null)
+    setDelivery(cur => {
+      const next = { ...cur }
+      delete next[id]
+      return next
+    })
+  }
+
+  async function saveDeliveredAccount(it: Item) {
+    if (!supabase || !isAdmin || savingDeliveredId) return
+    const d = getDel(it)
+    if (!d.email.trim() || !d.password.trim() || !d.profile.trim() || !d.valid_until) {
+      showToast('Completa correo, contraseña, perfil y fecha de vencimiento.')
+      return
+    }
+    const dateChanged = d.valid_until !== (it.valid_until ?? '')
+    const hasPendingRenewal = orders.some(o =>
+      ['pending', 'payment_confirmed', 'processing'].includes(o.status) &&
+      (o.order_items ?? []).some(item => item.renewal_of === it.id)
+    )
+    if (dateChanged && hasPendingRenewal) {
+      showToast('Hay una renovación pendiente. Resuélvela antes de cambiar la fecha.')
+      return
+    }
+    if (!window.confirm('¿Guardar los cambios de esta cuenta de streaming? El cliente verá los datos nuevos.')) return
+    const updates = {
+      delivery_email: d.email.trim(),
+      delivery_password: d.password.trim(),
+      delivery_profile: d.profile.trim(),
+      delivery_pin: d.pin.trim() || null,
+      ...(dateChanged ? { valid_until: d.valid_until } : {})
+    }
+    setSavingDeliveredId(it.id)
+    try {
+      const { data, error } = await supabase.from('order_items')
+        .update(updates).eq('id', it.id).select('id')
+      if (error) {
+        showToast(`No se pudo guardar: ${error.message}`)
+        return
+      }
+      if (!data?.length) {
+        showToast('No se actualizó la cuenta. Revisa los permisos de administrador.')
+        return
+      }
+      cancelEditingDelivered(it.id)
+      await refreshAdmin()
+      showToast('Cuenta actualizada correctamente')
+    } finally {
+      setSavingDeliveredId(null)
+    }
   }
 
   async function completeDelivery(o: Order) {
@@ -1230,6 +1290,9 @@ setModal('order_done')
           <section className="section wrap" id="admin-panel" style={{ borderTop: '2px solid #00a3ff', marginTop: 50, paddingBottom: 50 }}>
             <h2>Panel de administración</h2>
             <p style={{ opacity: 0.75 }}>Selecciona una sección para administrar tu tienda.</p>
+            <button type="button" className="button small" onClick={() => setAdminTab('productos')}>
+              + Crear producto
+            </button>
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(135px, 1fr))', gap: 10, margin: '18px 0 24px' }}>
               {([
                 ['inicio', '🏠 Inicio'], ['videojuegos', '🎮 Videojuegos'], ['streaming', '📺 Streaming'],
@@ -1304,11 +1367,11 @@ setModal('order_done')
             </div>
             </>)}
 
-            {( adminTab === 'pagos' || adminTab === 'videojuegos' ) && (<>
+            {(adminTab === 'pagos' || adminTab === 'videojuegos' || adminTab === 'streaming') && (<>
             <div className="admin-form" style={{ marginTop: 20 }}>
-              <h3>{adminTab === 'videojuegos' ? 'Pedidos de videojuegos' : 'Pedidos de streaming y pagos'}</h3>
+              <h3>{adminTab === 'videojuegos' ? 'Pedidos de videojuegos' : adminTab === 'streaming' ? 'Pedidos de streaming' : 'Verificación de pagos'}</h3>
               <div style={{ maxHeight: '75dvh', overflowY: 'auto' }}>
-                {pendingOrders.filter(o => adminTab === 'pagos' || (o.order_items ?? []).some(it => it.category === 'Videojuegos')).map(o => {
+                {pendingOrders.filter(o => adminTab === 'pagos' || (o.order_items ?? []).some(it => it.category === (adminTab === 'videojuegos' ? 'Videojuegos' : 'Streaming'))).map(o => {
                   const items = o.order_items ?? []
                   const first = items[0]
                   const isWa = first?.contact_type === 'whatsapp'
@@ -1374,7 +1437,7 @@ setModal('order_done')
                     </div>
                   )
                 })}
-                {pendingOrders.length === 0 && <p>No hay pedidos pendientes.</p>}
+                {pendingOrders.filter(o => adminTab === 'pagos' || (o.order_items ?? []).some(it => it.category === (adminTab === 'videojuegos' ? 'Videojuegos' : 'Streaming'))).length === 0 && <p>No hay pedidos pendientes en esta sección.</p>}
               </div>
               <button className="button secondary small" onClick={() => { void refreshAdmin() }}><RefreshCw size={14} /> Actualizar</button>
             </div>
@@ -1468,7 +1531,42 @@ setModal('order_done')
                       <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 6 }}>
                         <a className="button small secondary" href={waLinkTo(order.player_id, `Hola, tu ${item.game_name} - ${item.delivery_profile || ''} vence el ${fmtDate(item.valid_until)}. Puedes renovar desde la tienda con 5 días de anticipación.`)} target="_blank" rel="noreferrer">Recordar</a>
                         <a className="button small secondary" href={waLinkTo(order.player_id, deliveryText(item.game_name, d))} target="_blank" rel="noreferrer">Reenviar cuenta</a>
+                        <button type="button" className="button small" onClick={() => startEditingDelivered(item)}>
+                          Editar cuenta
+                        </button>
                       </div>
+                      {editingDeliveredId === item.id && (
+                        <div style={{ display: 'grid', gap: 10, marginTop: 12, padding: 12, border: '1px solid #00a3ff', borderRadius: 10 }}>
+                          <strong>Modificar datos de entrega</strong>
+                          <label>Correo
+                            <input type="text" autoComplete="off" value={getDel(item).email} onChange={e => setDel(item, { email: e.target.value })} />
+                          </label>
+                          <label>Contraseña
+                            <input type="text" autoComplete="off" value={getDel(item).password} onChange={e => setDel(item, { password: e.target.value })} />
+                          </label>
+                          <label>Perfil
+                            <input type="text" value={getDel(item).profile} onChange={e => setDel(item, { profile: e.target.value })} />
+                          </label>
+                          <label>PIN
+                            <input type="text" autoComplete="off" value={getDel(item).pin} onChange={e => setDel(item, { pin: e.target.value })} />
+                          </label>
+                          <label>Fecha de vencimiento
+                            <input type="date" value={getDel(item).valid_until} onChange={e => setDel(item, { valid_until: e.target.value })} />
+                          </label>
+                          <p style={{ fontSize: 12, opacity: 0.8 }}>
+                            Si cambias la fecha, se actualizará también el vencimiento que ve el cliente.
+                            Las renovaciones pendientes deben resolverse antes de modificarla.
+                          </p>
+                          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+                            <button type="button" className="button small" disabled={savingDeliveredId === item.id} onClick={() => { void saveDeliveredAccount(item) }}>
+                              {savingDeliveredId === item.id ? 'Guardando…' : 'Guardar cambios'}
+                            </button>
+                            <button type="button" className="button small secondary" disabled={savingDeliveredId === item.id} onClick={() => cancelEditingDelivered(item.id)}>
+                              Cancelar
+                            </button>
+                          </div>
+                        </div>
+                      )}
                     </div>
                   )
                 })}
