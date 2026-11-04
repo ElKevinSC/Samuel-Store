@@ -1051,6 +1051,33 @@ setModal('order_done')
     }
     return list.sort((a, b) => String(a.valid_until).localeCompare(String(b.valid_until)))
   }, [myOrders])
+  // Resumen privado del revendedor: se calcula solo desde sus propios pedidos, ya filtrados por RLS.
+  const resellerStats = useMemo(() => {
+    const currentMonth = todayGT().slice(0, 7)
+    const previousMonth = prevMonthKey(currentMonth)
+    let completedMonthAmount = 0
+    let completedMonthCount = 0
+    let previousMonthAmount = 0
+    let pendingCount = 0
+    for (const order of myOrders) {
+      if (order.status === 'completed') {
+        const month = gtDate(order.completed_at || order.created_at).slice(0, 7)
+        const amount = Number(order.amount) || 0
+        if (month === currentMonth) {
+          completedMonthAmount += amount
+          completedMonthCount += 1
+        } else if (month === previousMonth) {
+          previousMonthAmount += amount
+        }
+      } else if (['pending', 'payment_confirmed', 'processing'].includes(order.status)) {
+        pendingCount += 1
+      }
+    }
+    const remaining = Math.max(0, RESELLER_MIN - completedMonthAmount)
+    const progress = Math.min(100, Math.max(0, Math.round((completedMonthAmount / RESELLER_MIN) * 100)))
+    return { completedMonthAmount, completedMonthCount, previousMonthAmount, pendingCount, remaining, progress }
+  }, [myOrders])
+
   const myPendingRenewals = useMemo(() => {
     const set = new Set<string>()
     for (const o of myOrders) {
@@ -1103,12 +1130,14 @@ setModal('order_done')
           <a href="#ayuda" onClick={() => setMenu(false)}>Ayuda</a>
           <button onClick={() => { setModal(user ? 'my_orders' : 'login'); setMenu(false) }}>Mis pedidos</button>
           <button onClick={() => { setModal(user ? 'my_subs' : 'login'); setMenu(false) }}>Mis suscripciones</button>
+          {isReseller && !isAdmin && <a href="#reseller-panel" onClick={() => setMenu(false)}>Mi negocio</a>}
         </nav>
         <div className="account">
           {user ? (
             <>
               <span className="login">{user.email}</span>
               {isAdmin && <button className="button small" onClick={() => document.getElementById('admin-panel')?.scrollIntoView({ behavior: 'smooth' })}>Administrar</button>}
+              {isReseller && !isAdmin && <button className="button small" onClick={() => document.getElementById('reseller-panel')?.scrollIntoView({ behavior: 'smooth' })}>Mi negocio</button>}
               <button className="button small" onClick={() => { void supabase.auth.signOut() }}><LogOut size={14} /> Salir</button>
             </>
           ) : (
@@ -1378,6 +1407,87 @@ setModal('order_done')
             </details>
           ))}
         </section>
+        {user && isReseller && !isAdmin && (
+          <section className="section wrap" id="reseller-panel" style={{ borderTop: '2px solid #00a3ff', marginTop: 40, paddingBottom: 36 }}>
+            <div className="section-heading">
+              <div>
+                <h2>Mi negocio<span className="blue-text">.</span></h2>
+                <p style={{ opacity: 0.8 }}>Panel exclusivo para revendedores de Samuel Store.</p>
+              </div>
+              <button type="button" className="button secondary small" onClick={() => { void fetchMyOrders(user.id) }}>
+                <RefreshCw size={15} /> Actualizar
+              </button>
+            </div>
+
+            <div className="admin-form" style={{ padding: 18, marginBottom: 14 }}>
+              <h3>Mi meta mensual · {money(RESELLER_MIN)}</h3>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: 10, margin: '14px 0' }}>
+                <div style={{ border: '1px solid #194c6c', borderRadius: 12, padding: 12, background: '#101e2e' }}>
+                  <p style={{ fontSize: 12, opacity: 0.8 }}>Compras completadas este mes</p>
+                  <strong style={{ color: '#31d6ff', fontSize: 21 }}>{money(resellerStats.completedMonthAmount)}</strong>
+                </div>
+                <div style={{ border: '1px solid #194c6c', borderRadius: 12, padding: 12, background: '#101e2e' }}>
+                  <p style={{ fontSize: 12, opacity: 0.8 }}>Falta para la meta</p>
+                  <strong style={{ fontSize: 21 }}>{money(resellerStats.remaining)}</strong>
+                </div>
+                <div style={{ border: '1px solid #194c6c', borderRadius: 12, padding: 12, background: '#101e2e' }}>
+                  <p style={{ fontSize: 12, opacity: 0.8 }}>Pedidos por revisar</p>
+                  <strong style={{ fontSize: 21 }}>{resellerStats.pendingCount}</strong>
+                </div>
+              </div>
+              <div role="progressbar" aria-label="Avance de compras mensuales" aria-valuenow={resellerStats.progress} aria-valuemin={0} aria-valuemax={100}
+                style={{ width: '100%', height: 12, borderRadius: 20, background: '#243449', overflow: 'hidden' }}>
+                <div style={{ width: `${resellerStats.progress}%`, background: '#00a3ff', height: '100%', borderRadius: 20 }} />
+              </div>
+              <p style={{ fontSize: 13, marginTop: 8 }}>
+                {resellerStats.remaining === 0
+                  ? '¡Alcanzaste la meta de compras de este mes!'
+                  : `Llevas ${resellerStats.progress}% de tu meta mensual.`}
+              </p>
+              <p style={{ fontSize: 12, opacity: 0.75 }}>
+                Solo cuentan los pedidos completados. Mes anterior: {money(resellerStats.previousMonthAmount)}. Compras completadas este mes: {resellerStats.completedMonthCount}.
+              </p>
+            </div>
+
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 12, marginBottom: 14 }}>
+              <div className="admin-form" style={{ padding: 18 }}>
+                <h3>Mis precios especiales</h3>
+                <p>En el catálogo verás automáticamente los precios exclusivos de revendedor.</p>
+                <button type="button" className="button small" onClick={() => document.getElementById('catalogo')?.scrollIntoView({ behavior: 'smooth' })}>
+                  <ShoppingCart size={16} /> Ver catálogo
+                </button>
+              </div>
+              <div className="admin-form" style={{ padding: 18 }}>
+                <h3>Mis suscripciones</h3>
+                <p>Tienes {mySubs.length} suscripción{mySubs.length === 1 ? '' : 'es'} registrada{mySubs.length === 1 ? '' : 's'}.</p>
+                <button type="button" className="button secondary small" onClick={() => { setMessage(''); setModal('my_subs') }}>
+                  <Tv size={16} /> Ver suscripciones
+                </button>
+              </div>
+            </div>
+
+            <div className="admin-form" style={{ padding: 18 }}>
+              <h3>Mis últimos pedidos</h3>
+              <p style={{ fontSize: 13, opacity: 0.75 }}>Solo puedes consultar tus propios pedidos.</p>
+              {myOrders.slice(0, 5).map(order => (
+                <div key={order.id} style={{ padding: '12px 0', borderBottom: '1px solid #25415a' }}>
+                  <strong>{order.order_items?.[0]?.game_name || order.products?.game_name || 'Pedido'}</strong>
+                  <p style={{ fontSize: 13, margin: '4px 0' }}>
+                    {money(Number(order.amount) || 0)} · {fmtDate(gtDate(order.created_at))}
+                  </p>
+                  <p style={{ fontSize: 13, opacity: 0.85 }}>
+                    Estado: {order.status === 'completed' ? 'Completado' : order.status === 'pending' ? 'En revisión' : order.status === 'payment_confirmed' ? 'Pago confirmado' : order.status === 'processing' ? 'Procesando' : order.status === 'rejected' ? 'Rechazado' : order.status === 'cancelled' ? 'Cancelado' : 'En revisión'}
+                  </p>
+                </div>
+              ))}
+              {myOrders.length === 0 && <p>Todavía no tienes pedidos registrados.</p>}
+              <button type="button" className="button secondary small" style={{ marginTop: 12 }} onClick={() => { setMessage(''); setModal('my_orders') }}>
+                Ver todos mis pedidos <ArrowRight size={16} />
+              </button>
+            </div>
+          </section>
+        )}
+
         {isAdmin && (
           <section className="section wrap" id="admin-panel" style={{ borderTop: '2px solid #00a3ff', marginTop: 50, paddingBottom: 50 }}>
             <h2>Panel de administración</h2>
