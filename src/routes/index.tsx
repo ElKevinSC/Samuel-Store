@@ -317,10 +317,21 @@ if (p.error || b.error || o.error) {
     let alive = true
     void refreshProducts()
     void refreshBanks()
+    // Supabase can process the recovery token before the listener is registered.
+    // Keep an explicit recovery marker in the redirect URL to restore the form.
+    const recoveryRequested = new URLSearchParams(window.location.search).get('auth_action') === 'recover'
+      || new URLSearchParams(window.location.hash.slice(1)).get('type') === 'recovery'
     supabase.auth.getSession().then(async ({ data }) => {
       if (!alive) return
       const current = data.session?.user ?? null
       setUser(current)
+      if (current && recoveryRequested) {
+        setMessage('')
+        setModal('new_password')
+      } else if (!current && recoveryRequested) {
+        setMessage('El enlace de recuperación venció o no es válido. Solicita uno nuevo.')
+        setModal('forgot')
+      }
       if (current) await loadUserRole(current)
     })
     const { data: authListener } = supabase.auth.onAuthStateChange((_event, session) => {
@@ -826,7 +837,7 @@ setModal('order_done')
       return
     }
     setLoading(true)
-    const { error } = await supabase.auth.resetPasswordForEmail(email.trim(), { redirectTo: window.location.origin })
+    const { error } = await supabase.auth.resetPasswordForEmail(email.trim(), { redirectTo: `${window.location.origin}/?auth_action=recover` })
     setLoading(false)
     setMessage(error ? error.message : 'Si ese correo tiene cuenta, te enviamos un enlace para cambiar tu contraseña. Revisa también la carpeta de spam.')
   }
@@ -847,6 +858,9 @@ setModal('order_done')
     setNewPass('')
     setMessage('')
     setModal(null)
+    if (new URLSearchParams(window.location.search).has('auth_action')) {
+      window.history.replaceState(window.history.state, '', window.location.pathname)
+    }
     showToast('Contraseña actualizada')
   }
 
