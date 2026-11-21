@@ -2,14 +2,18 @@
 
 ## Arquitectura
 
-Interfaz exclusivamente visual en español, construida con React 19 y TanStack Start. El proyecto actual no utiliza Next.js ni Supabase. Los componentes React y los modelos se mantienen desacoplados del enrutador para facilitar una migración posterior.
+Interfaz en español con React 19, TanStack Start y Supabase (autenticación, base de datos, almacenamiento).
 
-- `src/routes/index.tsx`: inicio, categorías, catálogo, filtros, búsqueda, selector de precios y diálogos informativos.
-- `src/routes/__root.tsx`: documento HTML en español, metadatos y proveedores.
-- `src/data/catalog.ts`: contratos TypeScript, catálogo de demostración y formato monetario en quetzales.
-- `src/components/store/controller-art.tsx`: ilustración vectorial propia del control gamer.
-- `src/components/ui/`: componentes accesibles Radix/shadcn, incluido Dialog.
-- `src/styles.css`: tema oscuro, azul #00A3FF, tipografías Barlow y Barlow Condensed y adaptación móvil.
+- `src/routes/index.tsx`: ruta `/`; solo monta `StoreProvider` y `HomePage`.
+- `src/store/`: estado compartido (`StoreProvider`, `useStore`), lecturas (`queries.ts`), tipos y constantes.
+- `src/lib/`: utilidades puras (fechas GT, WhatsApp, CSV, portapapeles, comprobantes, cliente Supabase).
+- `src/data/`: catálogo de demostración y formato monetario, textos legales, ayuda y logos.
+- `src/components/layout/`: encabezado, portada, ayuda, pie y elementos flotantes; `StoreDialogs.tsx` muestra el diálogo activo.
+- `src/features/<área>/`: catálogo, checkout, pedidos, auth, legal, revendedor, streaming, inventario y admin (`admin/tabs/` una pestaña por archivo).
+- `Supabase/Migrations/`: SQL a ejecutar en Supabase. La entrega desde inventario y quitar acceso son funciones de la base de datos (transaccionales).
+- `src/components/ui/`: componentes Radix/shadcn. `src/styles.css`: tema oscuro, azul #00A3FF.
+
+La lógica de videojuegos no debe cambiar sin pedirlo expresamente.
 
 ## Convenciones
 
