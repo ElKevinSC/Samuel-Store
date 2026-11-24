@@ -1,4 +1,4 @@
-export const STORE_WHATSAPP = '50254560623'
+export const STORE_WHATSAPP = '50237820004'
 
 /** Deja solo dígitos; un número de 8 dígitos se toma como de Guatemala (502). */
 export function waDigits(v: string): string {
