@@ -6,27 +6,53 @@ import { useStore } from '@/store/StoreProvider'
 import type { Item } from '@/store/types'
 import { StreamingConditions } from './StreamingConditions'
 import { SubscriptionCard } from './SubscriptionCard'
-import { subState, type SubState } from './streaming'
+import { platformKey, subState, type SubState } from './streaming'
 import { useMySubscriptions } from './useMySubscriptions'
 
 type Filter = 'all' | SubState
 const FILTERS: [Filter, string][] = [['all', 'Todas'], ['expiring', 'Por vencer'], ['expired', 'Vencidas'], ['revoked', 'Finalizadas']]
+const ALL_PLATFORMS = ''
 
 export function MySubscriptionsDialog({ pay }: { pay: PaymentDraft }) {
   const { isReseller, setRenewItem, setMessage, setModal, refreshMyOrders } = useStore()
-  const { mySubs, pendingRenewals, counts } = useMySubscriptions()
+  const { mySubs, pendingRenewals } = useMySubscriptions()
   const [filter, setFilter] = useState<Filter>('all')
+  const [platform, setPlatform] = useState(ALL_PLATFORMS)
   const [search, setSearch] = useState('')
+
+  // Plataformas que tiene el usuario (Netflix, HBO MAX, Disney…), con cuántas cuentas de cada una.
+  const platforms = useMemo(() => {
+    const m = new Map<string, { key: string; name: string; count: number }>()
+    for (const it of mySubs) {
+      const key = platformKey(it.game_name || '')
+      const row = m.get(key) ?? { key, name: (it.game_name || 'Otra').trim(), count: 0 }
+      row.count += 1
+      m.set(key, row)
+    }
+    return [...m.values()].sort((a, b) => a.name.localeCompare(b.name, 'es'))
+  }, [mySubs])
+
+  // Si la plataforma elegida ya no existe (p. ej. tras actualizar), se vuelve a "Todas".
+  const selectedPlatform = platforms.some(p => p.key === platform) ? platform : ALL_PLATFORMS
+  const ofPlatform = useMemo(
+    () => (selectedPlatform === ALL_PLATFORMS ? mySubs : mySubs.filter(it => platformKey(it.game_name || '') === selectedPlatform)),
+    [mySubs, selectedPlatform],
+  )
+  const stateCounts = useMemo(() => {
+    const c: Record<SubState, number> = { active: 0, expiring: 0, expired: 0, revoked: 0 }
+    for (const it of ofPlatform) c[subState(it)] += 1
+    return c
+  }, [ofPlatform])
 
   const visible = useMemo(() => {
     const term = search.trim().toLowerCase()
-    return mySubs.filter(it => {
+    return ofPlatform.filter(it => {
       if (filter !== 'all' && subState(it) !== filter) return false
       if (!term) return true
       return [it.game_name, it.delivery_profile, it.delivery_email, it.end_customer_name, it.end_customer_phone]
         .some(v => (v ?? '').toLowerCase().includes(term))
     })
-  }, [mySubs, filter, search])
+  }, [ofPlatform, filter, search])
 
   function startRenew(it: Item) {
     setRenewItem(it)
@@ -39,7 +65,7 @@ export function MySubscriptionsDialog({ pay }: { pay: PaymentDraft }) {
     setModal('renew')
   }
 
-  const countOf = (f: Filter) => (f === 'all' ? mySubs.length : counts[f])
+  const countOf = (f: Filter) => (f === 'all' ? ofPlatform.length : stateCounts[f])
 
   return (
     <>
@@ -52,7 +78,23 @@ export function MySubscriptionsDialog({ pay }: { pay: PaymentDraft }) {
 
       {mySubs.length > 0 && (
         <div style={{ display: 'grid', gap: 8 }}>
-          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+          {platforms.length > 1 && (
+            <div role="group" aria-label="Filtrar por plataforma" style={{ display: 'flex', gap: 6, overflowX: 'auto', paddingBottom: 2 }}>
+              <button type="button" aria-pressed={selectedPlatform === ALL_PLATFORMS}
+                className={selectedPlatform === ALL_PLATFORMS ? 'button small' : 'button small secondary'}
+                style={{ flex: '0 0 auto' }} onClick={() => setPlatform(ALL_PLATFORMS)}>
+                Todas las plataformas ({mySubs.length})
+              </button>
+              {platforms.map(p => (
+                <button key={p.key} type="button" aria-pressed={selectedPlatform === p.key}
+                  className={selectedPlatform === p.key ? 'button small' : 'button small secondary'}
+                  style={{ flex: '0 0 auto' }} onClick={() => { setPlatform(p.key); setFilter('all') }}>
+                  {p.name} ({p.count})
+                </button>
+              ))}
+            </div>
+          )}
+          <div role="group" aria-label="Filtrar por estado" style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
             {FILTERS.filter(([f]) => f === 'all' || countOf(f) > 0).map(([f, label]) => (
               <button key={f} type="button" className={filter === f ? 'button small' : 'button small secondary'} onClick={() => setFilter(f)}>
                 {label} ({countOf(f)})
@@ -61,7 +103,7 @@ export function MySubscriptionsDialog({ pay }: { pay: PaymentDraft }) {
             <button type="button" className="button small secondary" aria-label="Actualizar" onClick={() => { void refreshMyOrders() }}><RefreshCw size={14} /></button>
           </div>
           {mySubs.length > 4 && (
-            <input placeholder="Buscar por plataforma, perfil o cliente" value={search} onChange={e => setSearch(e.target.value)} />
+            <input placeholder="Buscar por perfil, correo o cliente" value={search} onChange={e => setSearch(e.target.value)} />
           )}
         </div>
       )}
