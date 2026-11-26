@@ -1,5 +1,5 @@
-// "Mis compras": listas de suscripciones de streaming y recargas a partir de
-// los pedidos (los del usuario, o todos si es el administrador). Sin React.
+// Suscripciones de streaming a partir de los pedidos (los del usuario, o
+// todos si es el administrador): filtros, plataformas y tiempo restante. Sin React.
 import { isDeliveredSub, platformKey, subState, type SubState } from '@/features/streaming/streaming'
 import { daysLeft, gtDate } from '@/lib/dates'
 import { OPEN_ORDER_STATUSES } from '@/store/constants'
@@ -25,37 +25,17 @@ export function streamingPurchases(orders: Order[]): Purchase[] {
   return list.sort((a, b) => purchaseDate(b.order).localeCompare(purchaseDate(a.order)) || String(a.item.valid_until).localeCompare(String(b.item.valid_until)))
 }
 
-/** Recargas y otros productos que no son streaming, el pedido más nuevo primero. */
-export function rechargePurchases(orders: Order[]): Purchase[] {
-  const list: Purchase[] = []
-  for (const o of orders) for (const it of o.order_items ?? []) if (it.category !== 'Streaming') list.push({ item: it, order: o })
-  return list.sort((a, b) => b.order.created_at.localeCompare(a.order.created_at))
-}
-
 /** Pedidos de streaming que todavía esperan aprobación. */
 export const pendingStreamingOrders = (orders: Order[]) =>
   orders.filter(o => OPEN_ORDER_STATUSES.includes(o.status) && (o.order_items ?? []).some(it => it.category === 'Streaming'))
 
 // ---------------- Filtros ----------------
 export type StreamFilter = 'recent' | 'all' | SubState
-export type RechargeFilter = 'recent' | 'all' | 'open' | 'completed' | 'rejected'
 
 export function matchStream(p: Purchase, f: StreamFilter): boolean {
   if (f === 'all') return true
   if (f === 'recent') return isRecent(p)
   return subState(p.item) === f
-}
-
-export function rechargeState(o: Order): Exclude<RechargeFilter, 'recent' | 'all'> {
-  if (o.status === 'completed') return 'completed'
-  if (o.status === 'rejected' || o.status === 'cancelled') return 'rejected'
-  return 'open'
-}
-
-export function matchRecharge(p: Purchase, f: RechargeFilter): boolean {
-  if (f === 'all') return true
-  if (f === 'recent') return isRecent(p)
-  return rechargeState(p.order) === f
 }
 
 /** Búsqueda libre: plataforma, perfil, correo, PIN, cliente final y (admin) comprador. */

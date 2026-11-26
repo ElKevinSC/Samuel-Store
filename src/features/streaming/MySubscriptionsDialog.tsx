@@ -1,4 +1,4 @@
-// "Mis suscripciones": suscripciones de streaming (por plataforma) y recargas del usuario.
+// "Mis suscripciones": las cuentas de streaming del usuario, por plataforma.
 import { RefreshCw } from 'lucide-react'
 import { DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import type { PaymentDraft } from '@/features/checkout/usePaymentDraft'
@@ -29,7 +29,7 @@ export function MySubscriptionsDialog({ pay }: { pay: PaymentDraft }) {
       <DialogHeader>
         <DialogTitle>Mis suscripciones</DialogTitle>
         <DialogDescription>
-          {isReseller ? 'Tus cuentas de streaming y recargas. Toca una cuenta para copiar los datos o enviarlos por WhatsApp a tu cliente.' : 'Tus cuentas de streaming y recargas. Toca una cuenta para ver sus datos.'}
+          {isReseller ? 'Tus cuentas de streaming. Toca una cuenta para copiar los datos o enviarlos por WhatsApp a tu cliente.' : 'Tus cuentas de streaming. Toca una cuenta para ver sus datos.'}
         </DialogDescription>
       </DialogHeader>
 

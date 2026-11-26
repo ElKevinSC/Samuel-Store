@@ -18,7 +18,7 @@ import { useDeliveryDrafts } from './useDeliveryDrafts'
 
 const TABS: [AdminTab, string][] = [
   ['inicio', '🏠 Inicio'], ['videojuegos', '🎮 Videojuegos'], ['streaming', '📺 Streaming'],
-  ['compras', '🧾 Compras de clientes'], ['inventario', '🗂️ Inventario'], ['pagos', '💳 Pagos'], ['ventas', '📊 Ventas'],
+  ['compras', '🎬 Suscripciones de clientes'], ['inventario', '🗂️ Inventario'], ['pagos', '💳 Pagos'], ['ventas', '📊 Ventas'],
   ['revendedores', '👥 Revendedores'], ['productos', '📦 Productos'], ['bancos', '🏦 Bancos'], ['clientes', '👤 Clientes'],
 ]
 
