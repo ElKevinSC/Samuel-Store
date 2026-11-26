@@ -8,6 +8,7 @@ import type { AdminTab } from '@/store/types'
 import { BanksTab } from './tabs/BanksTab'
 import { ClientsTab } from './tabs/ClientsTab'
 import { PendingOrdersTab } from './tabs/PendingOrdersTab'
+import { PurchasesTab } from './tabs/PurchasesTab'
 import { ProductsTab } from './tabs/ProductsTab'
 import { ResellersTab } from './tabs/ResellersTab'
 import { SalesTab } from './tabs/SalesTab'
@@ -17,7 +18,7 @@ import { useDeliveryDrafts } from './useDeliveryDrafts'
 
 const TABS: [AdminTab, string][] = [
   ['inicio', '🏠 Inicio'], ['videojuegos', '🎮 Videojuegos'], ['streaming', '📺 Streaming'],
-  ['inventario', '🗂️ Inventario'], ['pagos', '💳 Pagos'], ['ventas', '📊 Ventas'],
+  ['compras', '🧾 Compras de clientes'], ['inventario', '🗂️ Inventario'], ['pagos', '💳 Pagos'], ['ventas', '📊 Ventas'],
   ['revendedores', '👥 Revendedores'], ['productos', '📦 Productos'], ['bancos', '🏦 Bancos'], ['clientes', '👤 Clientes'],
 ]
 
@@ -82,6 +83,7 @@ export function AdminPanel() {
         <PendingOrdersTab tab={adminTab} data={data} drafts={drafts} onGoInventory={() => setAdminTab('inventario')} />
       )}
       {adminTab === 'streaming' && <StreamingSubsTab data={data} drafts={drafts} />}
+      {adminTab === 'compras' && <PurchasesTab drafts={drafts} />}
       {adminTab === 'inventario' && <InventoryTab data={data} />}
       {adminTab === 'ventas' && <SalesTab data={data} />}
       {adminTab === 'revendedores' && <ResellersTab data={data} />}
