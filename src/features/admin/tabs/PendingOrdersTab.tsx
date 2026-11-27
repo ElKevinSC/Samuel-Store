@@ -100,7 +100,7 @@ export function PendingOrdersTab({ tab, data, drafts, onGoInventory }: Props) {
           return (
             <div key={o.id} className="admin-product-row" style={{ backgroundColor: '#222', padding: 10, margin: '5px 0', flexDirection: 'column', alignItems: 'flex-start', gap: 6 }}>
               <p><strong>Cliente:</strong> {o.profiles?.full_name || o.user_id}</p>
-              <p><strong>{isStream ? 'Plataforma' : 'Juego'}:</strong> {first?.game_name || o.products?.game_name || '—'}{renewals.length > 0 ? ' (RENOVACIÓN)' : ''}</p>
+              <p><strong>{isStream ? 'Plataforma' : 'Juego'}:</strong> {renewals.length > 1 ? `${renewals.length} cuentas (RENOVACIÓN MÚLTIPLE)` : <>{first?.game_name || o.products?.game_name || '—'}{renewals.length > 0 ? ' (RENOVACIÓN)' : ''}</>}</p>
               <div style={{ background: '#111', padding: 8, borderRadius: 6, width: '100%' }}>
                 <strong>{isStream ? 'Entregar:' : 'Recargar:'}</strong>
                 {items.map((it, i) => (
@@ -125,6 +125,7 @@ export function PendingOrdersTab({ tab, data, drafts, onGoInventory }: Props) {
                 const orig = it.renewal_of ? itemsById.get(it.renewal_of) : undefined
                 return (
                   <p key={it.id} style={{ color: '#ffcc00' }}>
+                    {renewals.length > 1 && <strong>{it.game_name} · {orig?.delivery_profile || '—'}{orig?.delivery_email ? ` (${orig.delivery_email})` : ''}: </strong>}
                     Vence actualmente: {fmtDate(orig?.valid_until)}. Al aprobar se suman {it.duration_days ?? 30} días.
                   </p>
                 )

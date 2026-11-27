@@ -105,7 +105,7 @@ export type ModalName =
   | 'login' | 'register' | 'forgot' | 'new_password'
   | 'reseller_apply'
   | 'checkout' | 'order_done' | 'my_orders' | 'user_orders'
-  | 'my_subs' | 'renew'
+  | 'my_subs' | 'renew' | 'renew_many'
   | 'terms' | 'legal' | 'privacy'
 
 export type AdminTab =
