@@ -32,10 +32,14 @@ export const pendingStreamingOrders = (orders: Order[]) =>
 // ---------------- Filtros ----------------
 export type StreamFilter = 'recent' | 'all' | SubState
 
+/** Las finalizadas (acceso retirado) solo aparecen en su propio filtro. */
 export function matchStream(p: Purchase, f: StreamFilter): boolean {
+  const state = subState(p.item)
+  if (f === 'revoked') return state === 'revoked'
+  if (state === 'revoked') return false
   if (f === 'all') return true
   if (f === 'recent') return isRecent(p)
-  return subState(p.item) === f
+  return state === f
 }
 
 /** Búsqueda libre: plataforma, perfil, correo, PIN, cliente final y (admin) comprador. */

@@ -70,7 +70,8 @@ export function PurchasesBrowser({ orders, mode, renderStreamDetail, pageSize = 
 
   // Con "Todas", sin buscar y sin plataforma elegida, se muestran las plataformas.
   const showPlatformGrid = sFilter === 'all' && !platform && !term
-  const platforms = useMemo(() => groupByPlatform(subs), [subs])
+  // Las tarjetas de plataforma cuentan solo las cuentas que no están finalizadas.
+  const platforms = useMemo(() => groupByPlatform(subs.filter(p => matchStream(p, 'all'))), [subs])
 
   const visible = useMemo(() => subs.filter(p => matchStream(p, sFilter)
     && (!platform || platformKey(p.item.game_name || 'Otra') === platform)
@@ -94,8 +95,8 @@ export function PurchasesBrowser({ orders, mode, renderStreamDetail, pageSize = 
 
       <input aria-label="Buscar suscripciones" value={search}
         onChange={e => {
-          // Al buscar se revisa todo: todas las plataformas y estados.
-          setSearch(e.target.value); setPlatform(null); setSFilter('all'); resetView()
+          // Al buscar se revisan todas las plataformas y estados (las finalizadas, solo desde su filtro).
+          setSearch(e.target.value); setPlatform(null); setSFilter(f => (f === 'revoked' ? f : 'all')); resetView()
         }}
         placeholder={isAdmin ? '🔍 Cliente, correo, perfil, PIN o plataforma' : '🔍 Correo, perfil, PIN, plataforma o cliente'} />
 

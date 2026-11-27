@@ -11,6 +11,7 @@ import { MyOrdersDialog, OrderDoneDialog, UserOrdersDialog } from '@/features/or
 import { ResellerApplyDialog } from '@/features/reseller/ResellerApplyDialog'
 import { MySubscriptionsDialog } from '@/features/streaming/MySubscriptionsDialog'
 import { RenewDialog } from '@/features/streaming/RenewDialog'
+import { RenewManyDialog } from '@/features/streaming/RenewManyDialog'
 import { useStore } from '@/store/StoreProvider'
 
 export function StoreDialogs() {
@@ -33,6 +34,16 @@ export function StoreDialogs() {
     setAcceptService(false)
   }, [renewItem, setReference, setDepositDate, setReceipt, setAcceptTerms, setAcceptService])
 
+  // Lo mismo al abrir "Renovar varias".
+  useEffect(() => {
+    if (modal !== 'renew_many') return
+    setReference('')
+    setDepositDate('')
+    setReceipt(null)
+    setAcceptTerms(false)
+    setAcceptService(false)
+  }, [modal, setReference, setDepositDate, setReceipt, setAcceptTerms, setAcceptService])
+
   return (
     <Dialog open={!!modal} onOpenChange={open => { if (!open) { setModal(null); setMessage('') } }}>
       <DialogContent className="store-dialog" style={{ maxHeight: '92dvh', overflowY: 'auto', overscrollBehavior: 'contain' }}>
@@ -49,6 +60,7 @@ export function StoreDialogs() {
         {modal === 'user_orders' && <UserOrdersDialog />}
         {modal === 'my_subs' && <MySubscriptionsDialog pay={pay} />}
         {modal === 'renew' && <RenewDialog pay={pay} />}
+        {modal === 'renew_many' && <RenewManyDialog pay={pay} />}
       </DialogContent>
     </Dialog>
   )

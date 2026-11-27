@@ -7,6 +7,7 @@ import { waLinkOrShare } from '@/lib/whatsapp'
 import { EXPIRY_WINDOW_DAYS } from '@/store/constants'
 import { useStore } from '@/store/StoreProvider'
 import type { Item } from '@/store/types'
+import { useRenewable } from './RenewManyDialog'
 import { reminderText, subState } from './streaming'
 import { useMySubscriptions } from './useMySubscriptions'
 
@@ -16,6 +17,7 @@ export function ExpiringSubscriptions({ variant }: Props) {
   const { setRenewItem, setMessage, setModal } = useStore()
   const { mySubs, pendingRenewals } = useMySubscriptions()
   const isReseller = variant === 'reseller'
+  const renewable = useRenewable()
 
   // Por vencer (0 a 5 días) y vencidas que todavía no se retiran.
   const expiring = useMemo(
@@ -40,6 +42,11 @@ export function ExpiringSubscriptions({ variant }: Props) {
           ? `Cuentas que vencen en ${EXPIRY_WINDOW_DAYS} días o menos. Mándale un recordatorio a tu cliente y renueva antes de que venza.`
           : `Tu servicio vence pronto. Renueva antes de la fecha para no perder el acceso.`}
       </p>
+      {renewable.length >= 2 && (
+        <button type="button" className="button small" style={{ margin: '8px 0' }} onClick={() => { setMessage(''); setModal('renew_many') }}>
+          <RefreshCw size={14} /> Renovar varias a la vez ({renewable.length})
+        </button>
+      )}
       <div style={{ maxHeight: '55dvh', overflowY: 'auto' }}>
         {expiring.map(it => {
           const left = daysLeft(it.valid_until ?? '')
