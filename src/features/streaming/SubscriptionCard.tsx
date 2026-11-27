@@ -14,9 +14,11 @@ type Props = {
   waitingRenewal: boolean
   canLabel: boolean
   onRenew: (it: Item) => void
+  /** Sin título ni estado (cuando ya los muestra la tarjeta de "Mis compras"). */
+  compact?: boolean
 }
 
-export function SubscriptionCard({ it, waitingRenewal, canLabel, onRenew }: Props) {
+export function SubscriptionCard({ it, waitingRenewal, canLabel, onRenew, compact = false }: Props) {
   const { supabase, showToast, refreshMyOrders } = useStore()
   const [editing, setEditing] = useState(false)
   const [name, setName] = useState(it.end_customer_name ?? '')
@@ -45,13 +47,15 @@ export function SubscriptionCard({ it, waitingRenewal, canLabel, onRenew }: Prop
   }
 
   return (
-    <div style={{ borderBottom: '1px solid #333', padding: '12px 0', opacity: revoked ? 0.65 : 1 }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, alignItems: 'baseline' }}>
-        <p><strong>{it.game_name} - {it.delivery_profile}</strong></p>
-        <span style={{ fontSize: 12, color: badge.color, whiteSpace: 'nowrap' }}>● {badge.text}</span>
-      </div>
+    <div style={compact ? { paddingTop: 10, opacity: revoked ? 0.65 : 1 } : { borderBottom: '1px solid #333', padding: '12px 0', opacity: revoked ? 0.65 : 1 }}>
+      {!compact && (
+        <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, alignItems: 'baseline' }}>
+          <p><strong>{it.game_name} - {it.delivery_profile}</strong></p>
+          <span style={{ fontSize: 12, color: badge.color, whiteSpace: 'nowrap' }}>● {badge.text}</span>
+        </div>
+      )}
 
-      {canLabel && (it.end_customer_name || it.end_customer_phone) && !editing && (
+      {canLabel && !compact && (it.end_customer_name || it.end_customer_phone) && !editing && (
         <p style={{ fontSize: 13, opacity: 0.85 }}><UserRound size={13} style={{ verticalAlign: '-2px' }} /> {it.end_customer_name || 'Cliente'}{it.end_customer_phone ? ` · ${it.end_customer_phone}` : ''}</p>
       )}
 

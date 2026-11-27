@@ -109,5 +109,5 @@ export type ModalName =
   | 'terms' | 'legal' | 'privacy'
 
 export type AdminTab =
-  | 'inicio' | 'videojuegos' | 'streaming' | 'inventario' | 'pagos' | 'ventas'
+  | 'inicio' | 'videojuegos' | 'streaming' | 'compras' | 'inventario' | 'pagos' | 'ventas'
   | 'revendedores' | 'productos' | 'bancos' | 'clientes'
